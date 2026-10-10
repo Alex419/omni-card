@@ -324,3 +324,44 @@ button (bottom-left) on messy piles. TIDY is also in the popover. The name shows
 its popover is open. The card count badge moved to the top-right to make room for the cog.
 
 The corners are relative to *your* view, so the cog is always bottom-right for you, whichever way the table is rotated.
+
+## 21. Table resize is previewed locally, sent once
+
+**Decision.** While you drag the resize grip, your browser resizes the table on its own, using the same clamping
+functions as the server (now shared in `packages/shared/src/layout.ts`). One `resizeTable` intent is sent when
+you let go.
+
+**Why.** The first version sent an update every 120 ms and waited for the server's reply before the table grew.
+Locally that was instant, but on Render each update is a cross-country round trip to a slow free CPU, so the
+table trailed behind the pointer. A benchmark (CPU throttled 4×) confirmed drawing was a steady 60 fps; the lag
+was purely network. General rule: during a continuous gesture, keep feedback local and send the *result*, not every step.
+
+**Trade-off.** Other players see the new size when you let go, not while you drag. Sharing the clamp code means the
+preview lands exactly where the server will put things, so nothing jumps when the reply arrives.
+
+## 22. Several cards played at once fan out
+
+**Decision.** Dropping more than one card onto a messy pile lands them as one fanned group: each card is offset
+along the viewer's horizontal so its corner index stays visible. The fan is stored as `fan: [index, groupSize]`
+on each card. The server stores where each card sits in the group; each client draws the fan left to right in its own
+frame, so a run like 2-3-4-5-6 reads correctly whichever way your table is rotated. Others also get a toast
+("ALEX PLAYED 5 CARDS ON DISCARD"). TIDY, NEAT and SHUFFLE square the pile again.
+
+**Why a messy pile only?** A neat pile models a squared stack, where only the top card is visible, and the
+redaction rules follow that (see 6). Messy piles already show every card's face in the top 14, so fanning just makes
+the cards physically readable. The default DISCARD pile is messy.
+
+**Also fixed.** Taking a card off a pile made the pile itself pop. Revealing the next card gives it a new id, which the
+"just arrived" animation mistook for a new card. Cards in a pile now only animate when the pile's count grew.
+
+## 23. Deploys: Virginia, and only after CI passes
+
+**Decision.** `render.yaml` pins `region: virginia` (players are on the East Coast; the Supabase database is in
+us-east-1 too) and uses `autoDeployTrigger: checksPass`, so a push to `main` deploys only after the GitHub Actions
+checks pass. Docs-only commits don't trigger a deploy.
+
+**Why it matters.** Every card move is a round trip to the server, so the server should be near the players. Gating
+on CI means a commit that breaks the build or tests never reaches players, and skipping docs-only deploys
+avoids needlessly ending open games (rooms live in memory, see 17).
+
+**Gotcha.** Render can't move an existing service to another region. Changing `region` means deleting the service and creating it again from the Blueprint.

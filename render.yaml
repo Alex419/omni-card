@@ -5,11 +5,20 @@ services:
     name: omni-card
     runtime: node
     plan: free
+    # Closest to East Coast players (and to the Supabase database in us-east-1).
+    # Render can't move an existing service: changing this means creating the service again.
+    region: virginia
     # --include=dev: the build needs TypeScript, Vite and tsup even though NODE_ENV=production.
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
-    autoDeploy: true
+    # Deploy a push to main only after the GitHub Actions checks (typecheck, lint, tests, build) pass.
+    autoDeployTrigger: checksPass
+    # Docs-only changes don't need a rebuild (and a redeploy would end open games).
+    buildFilter:
+      ignoredPaths:
+        - docs/**
+        - '**/*.md'
     envVars:
       - key: NODE_ENV
         value: production
