@@ -1,0 +1,279 @@
+.scene {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  touch-action: none;
+  background: radial-gradient(ellipse 70% 60% at 50% 42%, #26325e 0%, #141b38 55%, var(--night) 100%);
+}
+.plane {
+  position: absolute;
+  transform-origin: 50% 50%;
+  background-size: 64px 32px;
+  image-rendering: pixelated;
+  box-shadow:
+    0 20px 0 0 #4a2414,
+    0 26px 0 0 #000;
+}
+.felt {
+  position: absolute;
+  inset: 26px;
+  background-size: 32px 32px;
+  image-rendering: pixelated;
+  box-shadow:
+    inset 0 0 0 4px #003d24,
+    inset 0 10px 0 4px rgba(0, 0, 0, 0.22);
+}
+.felt-mark {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-pixel);
+  font-size: 30px;
+  color: rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.layer {
+  position: absolute;
+  inset: 0;
+}
+.placing .felt {
+  cursor: crosshair;
+  box-shadow: inset 0 0 0 6px var(--gold);
+}
+.grip {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  cursor: nesw-resize;
+  z-index: 30;
+  background: repeating-linear-gradient(135deg, var(--gold) 0 4px, #000 4px 8px);
+  box-shadow: 0 0 0 4px #000;
+}
+.grip:hover {
+  background: repeating-linear-gradient(135deg, var(--orange) 0 4px, #000 4px 8px);
+}
+
+/* cards */
+.card {
+  position: absolute;
+  width: var(--cw);
+  height: var(--ch);
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+  background-repeat: no-repeat;
+}
+.tc {
+  transform: translate(-50%, -50%) rotate(var(--r, 0deg));
+  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.35));
+}
+.tc.tsel {
+  filter: drop-shadow(4px 0 0 var(--gold)) drop-shadow(-4px 0 0 var(--gold)) drop-shadow(0 -4px 0 var(--gold))
+    drop-shadow(0 4px 0 var(--gold)) drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35));
+}
+.zone .tc {
+  transition:
+    left 0.26s steps(4),
+    top 0.26s steps(4),
+    --r 0.26s steps(4);
+}
+.moving {
+  pointer-events: none;
+}
+[data-card] {
+  cursor: grab;
+}
+.lifted {
+  opacity: 0.22;
+}
+.mq {
+  position: absolute;
+  z-index: 8;
+  pointer-events: none;
+  outline: 3px dashed var(--gold);
+  background: rgba(255, 236, 39, 0.1);
+}
+
+/* zones: a dashed outline with a small cog (settings), a grip (move) and, on messy piles, TIDY */
+.zone {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  outline: 4px dashed rgba(255, 241, 232, 0.42);
+  outline-offset: -4px;
+  background: rgba(0, 0, 0, 0.15);
+  cursor: move;
+}
+.zone.pile {
+  outline-color: rgba(255, 241, 232, 0.1);
+  background: rgba(0, 0, 0, 0.05);
+}
+.zone.pile:hover {
+  outline-color: rgba(255, 241, 232, 0.32);
+}
+.zone.tsel {
+  outline: 4px solid var(--gold);
+  background: rgba(255, 236, 39, 0.12);
+}
+.zone.hot {
+  outline-color: var(--gold);
+  background: rgba(255, 236, 39, 0.16);
+  animation: blink 0.5s steps(2) infinite;
+}
+@keyframes blink {
+  50% {
+    outline-color: var(--orange);
+  }
+}
+.zone.shuffling {
+  animation: jig 0.4s steps(4);
+}
+@keyframes jig {
+  25% {
+    translate: -6px 0;
+  }
+  50% {
+    translate: 6px -3px;
+  }
+  75% {
+    translate: -4px 2px;
+  }
+}
+
+.zbtn {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  z-index: 20;
+  background: var(--ink);
+  box-shadow:
+    0 0 0 3px #000,
+    0 4px 0 3px rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #000;
+}
+.zbtn:hover {
+  background: var(--ink-2);
+}
+.zbtn i {
+  width: 18px;
+  height: 18px;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}
+.zcog {
+  right: -10px;
+  bottom: -10px;
+}
+.zcog.open {
+  background: var(--orange);
+}
+.zgrip {
+  left: -10px;
+  top: -10px;
+  cursor: move;
+  opacity: 0.55;
+}
+.zone:hover .zgrip,
+.zone.tsel .zgrip {
+  opacity: 1;
+}
+.ztidy {
+  left: -10px;
+  bottom: -10px;
+  width: auto;
+  padding: 0 6px;
+  background: var(--green);
+}
+.ztidy:hover {
+  background: #7dff9a;
+}
+.zname {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  margin-bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 21;
+  pointer-events: none;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  background: var(--ink);
+  padding: 6px 8px 5px;
+  white-space: nowrap;
+  box-shadow: var(--edge);
+  display: none;
+}
+.zone:hover .zname,
+.zone.tsel .zname,
+.zone.named .zname {
+  display: block;
+}
+.zname .zdeck {
+  color: var(--red);
+  margin-right: 6px;
+}
+.zname .zface {
+  color: var(--gold);
+  margin-left: 8px;
+}
+.zname .zface.dn {
+  color: var(--sky);
+}
+.count {
+  position: absolute;
+  right: -10px;
+  top: -10px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  background: var(--red);
+  color: var(--paper);
+  padding: 5px 6px;
+  z-index: 15;
+  box-shadow: 0 3px 0 #000;
+  pointer-events: none;
+}
+.zempty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  line-height: 1.6;
+  color: rgba(255, 241, 232, 0.45);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* other players' hands, as fans of card backs on the table */
+.fan {
+  position: absolute;
+}
+.fan.hot {
+  outline: 4px dashed var(--gold);
+  outline-offset: 8px;
+}
+.fc {
+  position: absolute;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.35));
+}
+
+.ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+.gc {
+  position: absolute;
+  filter: drop-shadow(8px 12px 0 rgba(0, 0, 0, 0.4));
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}

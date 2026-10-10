@@ -1,0 +1,150 @@
+.note {
+  position: absolute;
+  width: 54px;
+  min-height: 46px;
+  padding: 8px 4px 5px;
+  transform: translate(-50%, -50%) rotate(var(--nr, 0deg));
+  background: var(--nc);
+  color: var(--ink);
+  font-family: var(--font-term);
+  font-size: 15px;
+  line-height: 0.85;
+  text-align: center;
+  overflow-wrap: anywhere;
+  cursor: grab;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.note::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 5px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.note::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+  background: linear-gradient(-45deg, var(--night) 50%, rgba(0, 0, 0, 0.25) 50%);
+}
+.note.tn {
+  width: 112px;
+  min-height: 98px;
+  font-size: 28px;
+  padding: 14px 8px 8px;
+}
+.note.tn.tsel {
+  outline: 4px solid var(--gold);
+  outline-offset: 3px;
+}
+.note.mn {
+  position: relative;
+  transform: rotate(var(--nr, 0deg));
+  flex: none;
+}
+.note.gn {
+  transform: translate(-50%, -50%) rotate(-6deg) scale(1.35);
+  box-shadow: 8px 12px 0 rgba(0, 0, 0, 0.4);
+}
+.n-yel {
+  --nc: #ffec27;
+}
+.n-pink {
+  --nc: #ff77a8;
+}
+.n-blue {
+  --nc: #29adff;
+}
+.n-green {
+  --nc: #00e436;
+}
+
+.pad {
+  position: absolute;
+  left: 16px;
+  bottom: 54px;
+  z-index: 7;
+  width: 74px;
+  height: 66px;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+.pad.ready {
+  cursor: grab;
+}
+.padstack {
+  position: absolute;
+  inset: 7px 0 0 7px;
+  background: #8b7d10;
+  box-shadow:
+    inset 0 3px 0 #c9b800,
+    inset 0 6px 0 #8b7d10,
+    inset 0 9px 0 #c9b800,
+    3px 4px 0 rgba(0, 0, 0, 0.45);
+}
+.padtop {
+  position: absolute;
+  inset: 0 7px 7px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: var(--font-term);
+  font-size: 17px;
+  line-height: 0.85;
+  color: var(--ink);
+  background: var(--nc);
+  padding: 7px 4px 4px;
+  overflow-wrap: anywhere;
+}
+.padtop::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 5px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.pad:not(.ready) .padtop {
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  line-height: 1.5;
+}
+.pad.ready .padtop {
+  animation: wig 1.4s steps(2) infinite;
+}
+@keyframes wig {
+  50% {
+    rotate: -4deg;
+  }
+}
+.menotes {
+  position: absolute;
+  left: 104px;
+  bottom: 54px;
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: min(360px, calc(100% - 120px));
+}
+.menotes .label {
+  flex-basis: 100%;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: var(--pink);
+  text-shadow: 2px 2px 0 #000;
+}

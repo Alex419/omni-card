@@ -1,0 +1,93 @@
+.lobby {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+  background: radial-gradient(ellipse 70% 60% at 50% 30%, #26325e 0%, #141b38 55%, var(--night) 100%);
+}
+.lobby-card {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 22px;
+}
+.logo {
+  font-family: var(--font-pixel);
+  font-size: clamp(26px, 8vw, 44px);
+  color: var(--gold);
+  text-shadow: 5px 5px 0 var(--red);
+  text-align: center;
+  line-height: 1.2;
+}
+.logo span {
+  color: var(--paper);
+  text-shadow: 5px 5px 0 var(--sky);
+}
+.tagline {
+  text-align: center;
+  color: var(--grey);
+  font-size: 22px;
+  line-height: 1;
+  margin: -8px 0 0;
+}
+.lobby .panel {
+  display: grid;
+  gap: 14px;
+}
+.or {
+  text-align: center;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: var(--grey);
+}
+.join-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.join-row .field {
+  letter-spacing: 4px;
+}
+.err {
+  color: var(--red);
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.lobby-foot {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+.demo-cards {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  height: 70px;
+}
+.demo-cards i {
+  width: 50px;
+  height: 70px;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.4));
+}
+.demo-cards i:nth-child(odd) {
+  rotate: -6deg;
+}
+.demo-cards i:nth-child(even) {
+  rotate: 5deg;
+  translate: 0 6px;
+}
+.center-msg {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  gap: 18px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  text-align: center;
+  padding: 16px;
+  line-height: 1.6;
+}
