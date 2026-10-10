@@ -75,11 +75,16 @@ function assertRedacted(game: GameState, playerId: string) {
   //    (Ids are upper-case with a dot, tags are lower-case base-36, so they can't collide.)
   for (const id of truth.hidden) expect(json, `leaked ${id} to ${playerId}`).not.toContain(id);
 
-  // 2. Faces in the view are exactly the faces of cards this viewer may see.
-  //    (Single-deck games only, so every face is unique.)
-  const faces = cardsIn(view).flatMap((c) => (c.face ? [c.face] : []));
-  expect(new Set(faces).size).toBe(faces.length);
-  for (const f of faces) expect([...truth.visible].map(faceOf)).toContain(f);
+  // 2. Each face appears no more often than cards with that face are visible to this viewer.
+  //    (With several decks a face like "AS" can legitimately appear more than once.)
+  const allowed = new Map<string, number>();
+  for (const id of truth.visible) allowed.set(faceOf(id), (allowed.get(faceOf(id)) ?? 0) + 1);
+  for (const c of cardsIn(view)) {
+    if (!c.face) continue;
+    const left = allowed.get(c.face) ?? 0;
+    expect(left, `${playerId} sees one ${c.face} too many`).toBeGreaterThan(0);
+    allowed.set(c.face, left - 1);
+  }
 
   // 3. Every vid is either a visible card's id or an opaque tag of a hidden card.
   for (const c of cardsIn(view)) {
@@ -169,6 +174,22 @@ describe('viewFor redaction', () => {
     expect(seen.face).toBeNull();
     expect(seen.vid).not.toBe(topVid);
     assertRedacted(g, 'p0');
+  });
+
+  it('with matching backs, nothing tells which deck a hidden card came from', () => {
+    const { game, rng } = setup(2);
+    let g = act(game, 0, { type: 'setDecks', decks: 2, jokers: false }, rng).game;
+    g = act(g, 0, { type: 'setBacks', backs: [1, 1] }, rng).game;
+    g = act(g, 0, { type: 'deal', count: 8 }, rng).game;
+    const view = viewFor(g, 'p1', 0);
+    const backs = [
+      ...view.zones.flatMap((z) => z.cards.map((c) => c.back)),
+      ...view.seats.flatMap((s) => s.handBacks),
+    ];
+    expect(new Set(backs)).toEqual(new Set([1]));
+    // Both decks really are in play, so this is the redaction at work, not luck.
+    expect(new Set(g.table.hands.flat().map((id) => id.split('.')[1]))).toEqual(new Set(['0', '1']));
+    assertRedacted(g, 'p1');
   });
 
   it('will not resolve a guessed real id for a hidden card', () => {
@@ -264,6 +285,8 @@ function randomIntent(game: GameState, seat: number, rng: Rng): Intent {
     () => ({ type: 'createZone', ...xy() }),
     () => (rng() < 0.1 && zone ? { type: 'deleteZone', id: zone.id } : null),
     () => (rng() < 0.05 ? { type: 'collect' } : null),
+    () => (rng() < 0.1 ? { type: 'setBacks', backs: [Math.floor(rng() * 4), Math.floor(rng() * 4)] } : null),
+    () => (rng() < 0.03 ? { type: 'setDecks', decks: 1 + Math.floor(rng() * 2), jokers: rng() < 0.5 } : null),
     () => ({ type: 'undo' }),
   ];
   for (;;) {

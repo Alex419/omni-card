@@ -8,6 +8,7 @@ export const DEFAULT_CONFIG: TableConfig = {
   decks: 1,
   jokers: false,
   size: 'M',
+  backs: [0, 1, 2, 3],
   tw: 1000,
   th: 640,
 };

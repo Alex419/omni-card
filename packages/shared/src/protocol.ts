@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CARD_SIZES, LIMITS, MAX_DECKS, MAX_SEATS, MIN_SEATS, NOTE_COLORS } from './constants';
+import { BACK_COUNT, CARD_SIZES, LIMITS, MAX_DECKS, MAX_SEATS, MIN_SEATS, NOTE_COLORS } from './constants';
 import type { GameEvent } from './events';
 import type { TableView } from './view';
 
@@ -89,6 +89,19 @@ export const IntentSchema = z.discriminatedUnion('type', [
     type: z.literal('setDecks'),
     decks: z.number().int().min(1).max(MAX_DECKS),
     jokers: z.boolean(),
+  }),
+  z.object({
+    type: z.literal('setBacks'),
+    backs: z
+      .array(
+        z
+          .number()
+          .int()
+          .min(0)
+          .max(BACK_COUNT - 1),
+      )
+      .min(1)
+      .max(MAX_DECKS),
   }),
   z.object({ type: z.literal('setCardSize'), size: z.enum(Object.keys(CARD_SIZES) as ['S', 'M', 'L']) }),
   z.object({ type: z.literal('resizeTable'), tw: z.number(), th: z.number() }),

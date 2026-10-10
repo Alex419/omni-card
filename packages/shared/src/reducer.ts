@@ -549,6 +549,15 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
       return { label: 'CHANGE DECKS' };
     }
 
+    case 'setBacks': {
+      // Only the look changes: the cards themselves (and their secret ids) stay where they are.
+      const backs = [...t.cfg.backs];
+      intent.backs.forEach((b, d) => (backs[d] = b));
+      t.cfg.backs = backs;
+      log(c, 'CHANGED THE CARD BACKS', 'deal');
+      return { label: 'CARD BACKS' };
+    }
+
     case 'setCardSize': {
       t.cfg.size = intent.size;
       log(c, '', 'deal');

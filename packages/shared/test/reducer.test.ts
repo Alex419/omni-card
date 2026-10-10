@@ -286,6 +286,17 @@ describe('table setup', () => {
     expect(allCards(g)).toEqual(allCardIds(2, true).sort());
   });
 
+  it('lets each deck have any back design, and only changes the look', () => {
+    const { game, rng } = setup(2);
+    let g = act(game, 0, { type: 'setDecks', decks: 2, jokers: false }, rng).game;
+    const before = deckOf(g).cards.map((c) => c.id);
+    g = act(g, 0, { type: 'setBacks', backs: [3, 3] }, rng).game;
+    expect(g.table.cfg.backs).toEqual([3, 3, 2, 3]);
+    expect(deckOf(g).cards.map((c) => c.id)).toEqual(before);
+    g = act(g, 1, { type: 'undo' }, rng).game;
+    expect(g.table.cfg.backs).toEqual([0, 1, 2, 3]);
+  });
+
   it('will not remove an occupied seat; removing empty ones returns their cards', () => {
     const { game, rng } = setup(3, { seats: 6 });
     expect(applyIntent(game, { type: 'setSeats', count: 2 }, ctx(game, 0, rng)).ok).toBe(false);

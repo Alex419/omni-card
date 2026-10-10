@@ -1,4 +1,4 @@
-import { backOf, faceOf, type Face } from './cards';
+import { backFor, faceOf, type Face } from './cards';
 import { LIMITS } from './constants';
 import type { Card, GameState, Jitter, LooseCard, Note, Player, TableConfig, Zone } from './state';
 
@@ -116,8 +116,8 @@ export const vidFor = (c: Card, visible: boolean) => (visible ? c.id : `h${c.tag
 
 export const looseVid = (c: LooseCard) => vidFor(c, c.up);
 
-function cardView(c: Card, visible: boolean): CardView {
-  return { vid: vidFor(c, visible), face: visible ? faceOf(c.id) : null, back: backOf(c.id) };
+function cardView(cfg: TableConfig, c: Card, visible: boolean): CardView {
+  return { vid: vidFor(c, visible), face: visible ? faceOf(c.id) : null, back: backFor(cfg, c.id) };
 }
 
 /* ---------- the view ---------- */
@@ -140,7 +140,7 @@ export function viewFor(game: GameState, playerId: string, now: number): TableVi
     const cards: ZoneCardView[] = [];
     for (let i = start; i < z.cards.length; i++) {
       const c = z.cards[i]!;
-      cards.push({ ...cardView(c, zoneCardVisible(z, i)), j: c.j, up: c.up, fan: c.fan ?? null });
+      cards.push({ ...cardView(table.cfg, c, zoneCardVisible(z, i)), j: c.j, up: c.up, fan: c.fan ?? null });
     }
     return {
       id: z.id,
@@ -158,7 +158,12 @@ export function viewFor(game: GameState, playerId: string, now: number): TableVi
     };
   });
 
-  const loose: LooseCardView[] = table.loose.map((c) => ({ ...cardView(c, c.up), x: c.x, y: c.y, r: c.r }));
+  const loose: LooseCardView[] = table.loose.map((c) => ({
+    ...cardView(table.cfg, c, c.up),
+    x: c.x,
+    y: c.y,
+    r: c.r,
+  }));
 
   const seats: SeatView[] = [];
   for (let s = 0; s < table.cfg.seats; s++) {
@@ -169,7 +174,7 @@ export function viewFor(game: GameState, playerId: string, now: number): TableVi
       player: p ? playerView(p) : null,
       open: seatIsOpen(players, s, now),
       handCount: hand.length,
-      handBacks: hand.map(backOf),
+      handBacks: hand.map((id) => backFor(table.cfg, id)),
       score: table.score[s] ?? 0,
     });
   }
@@ -177,12 +182,16 @@ export function viewFor(game: GameState, playerId: string, now: number): TableVi
   const hand =
     mySeat === null
       ? null
-      : (table.hands[mySeat] ?? []).map((id) => ({ vid: id, face: faceOf(id), back: backOf(id) }));
+      : (table.hands[mySeat] ?? []).map((id) => ({
+          vid: id,
+          face: faceOf(id),
+          back: backFor(table.cfg, id),
+        }));
 
   const last = game.history[game.history.length - 1];
   return {
     you: { playerId: me.id, name: me.name, seat: mySeat },
-    cfg: { ...table.cfg },
+    cfg: { ...table.cfg, backs: [...table.cfg.backs] },
     zones,
     loose,
     seats,

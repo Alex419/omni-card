@@ -72,6 +72,8 @@ export interface TableConfig {
   decks: number;
   jokers: boolean;
   size: CardSize;
+  /** Back design for each deck (index = deck number, value 0..BACK_COUNT-1). Repeats allowed. */
+  backs: number[];
   /** Table width and height in table units. */
   tw: number;
   th: number;

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   allCardIds,
+  BACK_COUNT,
   LIMITS,
   MAX_DECKS,
   MAX_SEATS,
@@ -213,10 +214,25 @@ export function TableMenu({
             +
           </button>
         </div>
-        <div className="backs" aria-hidden="true">
-          {Array.from({ length: c.decks }, (_, i) => (
-            <i key={i} className={`c-b${i}`} />
-          ))}
+      </div>
+      <div className="prow">
+        <span>CARD BACKS: CLICK ONE TO CHANGE IT. MATCHING BACKS HIDE WHICH DECK A CARD CAME FROM</span>
+        <div className="backs">
+          {Array.from({ length: c.decks }, (_, d) => {
+            const back = c.backs[d] ?? d % BACK_COUNT;
+            return (
+              <button
+                key={d}
+                className={`c-b${back}`}
+                aria-label={`Deck ${d + 1} back, design ${back + 1} of ${BACK_COUNT}. Click for the next design.`}
+                onClick={() => {
+                  const backs = Array.from({ length: c.decks }, (_, i) => c.backs[i] ?? i % BACK_COUNT);
+                  backs[d] = (back + 1) % BACK_COUNT;
+                  send({ type: 'setBacks', backs });
+                }}
+              />
+            );
+          })}
         </div>
       </div>
       <div className="prow">
