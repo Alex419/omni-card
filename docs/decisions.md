@@ -191,6 +191,15 @@ Details:
 **Trade-off.** Snapshots cost memory (about 20 KB × 60 per room); fine in memory, and a reason to cap history.
 Anyone can undo anyone. That matches the project's "police the rules yourselves" spirit, and announcing it keeps it honest.
 
+**Revisited after playtesting (kept as is).** We weighed two alternatives:
+- *Undo only your own moves, any time.* This needs inverse operations instead of snapshots, and it conflicts with
+  later moves: you discard a card, Maya picks it up, then you undo.
+- *Undo your own move freely, others' moves by request (ACCEPT/DENY).*
+
+We kept anyone-can-undo-the-last-move for flexibility. If griefing becomes a problem, the cheapest change is "only
+your own last move, while nobody has acted since". That's a single check against the top history entry, because
+undo restores whole-table snapshots.
+
 ## 11. Per-seat view rotation
 
 **Decision.** Positions are stored in *table coordinates* (as seen from seat 0). Seats sit on the table's edges
@@ -374,7 +383,7 @@ with duration, peak seated players and number of actions, and `feedback_sent`) i
 
 **Why server-side, not a tracking script?** Page-view tools (Google Analytics, Plausible, Cloudflare) say who
 *visited*. For a game, the question is who *played*, and only the server knows that. A server-side event
-also can't be blocked by ad-blockers, which hide 20–40% of visitors from client-side scripts. A page-view tool
+also can't be blocked by ad-blockers, which hide a sizeable share of visitors from client-side scripts. A page-view tool
 is still worth adding later for traffic sources; Cloudflare Web Analytics is free and cookieless.
 
 **Privacy by design.** No names, IP addresses, cookies or typed text. To count *returning* players without
@@ -397,3 +406,41 @@ third-party scripts would change that.
 - **Testable:** `Room` only knows a tiny `RoomAnalytics` interface (`track`, `pseudonym`); tests pass a fake
   and assert on the events. The SQL was checked against PGlite (Postgres compiled to WebAssembly) before it
   touched the real database.
+
+## 25. Each deck's card back is a table setting
+
+**Decision.** `TableConfig.backs[deck]` picks one of the 4 back designs per deck, and repeats are allowed. In TABLE
+setup you click a deck's back to cycle its design (`setBacks` intent, undoable). It defaults to one design per
+deck, as before.
+
+**Why.** With mixed backs you can see which deck a face-down card came from. Some games want that (sorting decks
+back out); others want decks indistinguishable. Before, the back was derived from the deck number baked into the
+card id (`AS.1` → back 1). Now `backFor(cfg, id)` looks it up, so it's a display setting and the cards' secret
+identities never change.
+
+**Redaction check.** Hidden cards expose only `back` (the chosen design), never the deck number. A test sets two
+decks to the same back and confirms every hidden card and every opponent's hand shows the same value. The fuzz test
+now also mixes in deck and back changes, and its face check counts faces instead of assuming each face is unique
+(with two decks there are legitimately two "AS").
+
+*Known and harmless:* a **face-up** card's vid is its real id (`AS.1`), which includes the deck number. Its face is
+already public, and when it's hidden again it gets an opaque tag that's re-rolled on shuffle and when it leaves a
+hand, so the deck number can't be followed into hiding.
+
+## 26. Toolbar: priority+ overflow into a MORE menu
+
+**Decision.** Toolbar buttons that don't fit move into a MORE menu, least important first: HELP, SCORE, COLLECT,
++ ZONE, SHUFFLE, sound, ROOM, UNDO, TABLE, then DEAL. FEEDBACK and MORE always stay visible.
+
+**Why.** The old bar scrolled sideways with its scrollbar hidden, so on a narrower window buttons simply vanished
+with no hint they existed. Wrapping onto a second row was the simplest fix, but it shrinks the table on exactly the
+screens that have the least room. Priority+ is the standard pattern for this (GitHub's and Gmail's toolbars do it).
+
+**How.**
+- An invisible copy of every button is rendered once, so each width can be measured even while that button is
+  inside MORE. Measuring the real bar instead loops: hide, re-measure, show, re-measure...
+- A `ResizeObserver` on the bar re-runs a pure function, `fitToolbar()` (`apps/client/src/ui/toolbarFit.ts`, unit-tested).
+- It keeps items strictly in priority order, so a less important button is never shown while a more important one is hidden.
+
+**Also.** SND ON/OFF became a pixel speaker icon (sound waves, or a red X), with an `aria-label` so screen readers
+still announce it. FEEDBACK is pink in the bar and the lobby, and the HELP panel asks for feedback.
