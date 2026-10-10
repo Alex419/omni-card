@@ -34,6 +34,60 @@ function gripURL(): string {
   return c.toDataURL();
 }
 
+/** 11x9 speaker: with sound waves when on, with an X when muted. */
+const SPEAKER = [
+  '....#......',
+  '...##......',
+  '####.#.....',
+  '#..#.#.....',
+  '#..#.#.....',
+  '#..#.#.....',
+  '####.#.....',
+  '...##......',
+  '....#......',
+];
+function speakerURL(on: boolean): string {
+  const [c, x] = canvas(11, 9);
+  blit(x, SPEAKER, 0, 0, PAL.paper);
+  if (on)
+    blit(
+      x,
+      [
+        '........#..',
+        '.......#..#',
+        '.....#..#.#',
+        '......#.#.#',
+        '......#.#.#',
+        '......#.#.#',
+        '.....#..#.#',
+        '.......#..#',
+        '........#..',
+      ],
+      0,
+      0,
+      PAL.gold,
+    );
+  else
+    blit(
+      x,
+      [
+        '...........',
+        '...........',
+        '......#...#',
+        '.......#.#.',
+        '........#..',
+        '.......#.#.',
+        '......#...#',
+        '...........',
+        '...........',
+      ],
+      0,
+      0,
+      PAL.red,
+    );
+  return c.toDataURL();
+}
+
 let installed = false;
 export function installSpriteSheet() {
   if (installed) return;
@@ -83,6 +137,7 @@ export function installSpriteSheet() {
   ])})}`;
   LOOKS.forEach((look, seat) => (css += `.av-${seat}{background-image:url(${personURL(look)})}`));
   css += `.i-cog{background-image:url(${cogURL()})}.i-grip{background-image:url(${gripURL()})}`;
+  css += `.i-snd-on{background-image:url(${speakerURL(true)})}.i-snd-off{background-image:url(${speakerURL(false)})}`;
   const el = document.createElement('style');
   el.dataset.sprites = '';
   el.textContent = css;

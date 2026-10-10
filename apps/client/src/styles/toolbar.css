@@ -24,26 +24,63 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  overflow-x: auto;
   padding: 6px 4px;
   flex: 1;
   min-width: 0;
-  scrollbar-width: none;
+  /* Nothing scrolls out of sight any more: what doesn't fit goes into MORE (see Toolbar.tsx). */
+  overflow: hidden;
 }
-.tools::-webkit-scrollbar {
-  display: none;
+.titem {
+  display: flex;
+  flex: none;
+}
+.tools-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+/* Invisible copy of the toolbar used only to measure button widths. */
+.bar-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.btn.icon {
+  padding: 5px 8px 4px;
+}
+.btn.icon i {
+  display: block;
+  width: 22px;
+  height: 18px;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}
+.more-menu {
+  display: grid;
+  gap: 6px;
+}
+.more-menu .titem > .btn {
+  flex: 1;
+  text-align: left;
+}
+.menu-icon {
+  display: inline-block;
+  width: 11px;
+  height: 9px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
 }
 .deal {
   display: flex;
   align-items: center;
   gap: 2px;
-}
-.sep {
-  width: 4px;
-  height: 22px;
-  background: #000;
-  flex: none;
-  margin-inline: 4px;
 }
 .code {
   font-family: var(--font-pixel);
@@ -63,4 +100,14 @@
     gap: 8px;
     padding-inline: 8px;
   }
+}
+/* A pixel down-arrow; the pixel font has no ▾ character. */
+.btn.more::after {
+  content: '';
+  display: inline-block;
+  margin-left: 7px;
+  border: 4px solid transparent;
+  border-top-color: currentColor;
+  border-bottom-width: 0;
+  vertical-align: 1px;
 }

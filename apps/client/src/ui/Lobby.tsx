@@ -94,7 +94,7 @@ export function Lobby() {
           </div>
           <div className="lobby-foot">
             <button
-              className="btn"
+              className="btn fb"
               data-keeps-pop
               onClick={(e) => setFeedback(feedback ? null : anchorOf(e.currentTarget))}
             >

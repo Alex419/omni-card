@@ -73,6 +73,11 @@
   padding: 8px 10px;
   box-shadow: 0 0 0 3px #000;
 }
+.hint .hint-fb {
+  display: block;
+  margin-top: 6px;
+  color: var(--pink);
+}
 .hint em {
   font-style: normal;
   color: var(--gold);

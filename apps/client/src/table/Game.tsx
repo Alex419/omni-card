@@ -926,6 +926,10 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
             dragging to flip. <em>DRAG ON EMPTY FELT</em> to box-select; <em>SHIFT+CLICK</em> adds. The{' '}
             <em>COG</em> on a zone opens its settings. Drop cards on a friend to give them. Write a
             <em> STICKY NOTE</em> and slap it on someone. <em>ROOM</em> copies the invite link.
+            <span className="hint-fb">
+              Found a bug or have an idea? Tap <em>FEEDBACK</em>. I'd appreciate hearing what to improve and
+              what you enjoy!
+            </span>
           </div>
         )}
         {canPlay && (
