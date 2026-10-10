@@ -12,6 +12,7 @@ import {
   type Rng,
   type ServerMessage,
 } from '@omni/shared';
+import type { Analytics } from './analytics/analytics';
 import { randomId } from './rng';
 
 /** Anything we can send messages to. A WebSocket in production, a fake in tests. */
@@ -20,6 +21,14 @@ export interface Peer {
 }
 
 const MAX_PLAYERS = MAX_SEATS + 16; // seated players plus spectators
+
+/** How a room reports analytics, without knowing where they go. */
+export interface RoomAnalytics {
+  track: Analytics['track'];
+  /** Turns a secret reconnect token into a non-reversible id (see analytics.ts). */
+  pseudonym: (token: string) => string;
+}
+const NO_ANALYTICS: RoomAnalytics = { track: () => {}, pseudonym: () => '' };
 
 /** Upper-case printable ASCII only: the pixel font has nothing else. */
 export function cleanName(raw: string): string {
@@ -44,14 +53,18 @@ export class Room {
   lastActive: number;
   private tokens = new Map<string, string>(); // secret token -> player id
   private peers = new Map<Peer, string>(); // peer -> player id
+  /** Running totals reported when the room ends. */
+  private stats = { createdAt: 0, peakSeated: 0, players: 0, actions: 0, started: false, ended: false };
 
   constructor(
     readonly code: string,
     private rng: Rng,
     private now: () => number = Date.now,
+    private analytics: RoomAnalytics = NO_ANALYTICS,
   ) {
     this.game = newGame(rng);
     this.lastActive = now();
+    this.stats.createdAt = this.lastActive;
   }
 
   get peerCount() {
@@ -76,11 +89,14 @@ export class Room {
       this.tokens.set(token, player.id);
       this.setPlayers([...this.game.players, player]);
       this.notice(`${player.name} JOINED`, 'join');
+      this.stats.players++;
+      this.analytics.track('player_joined', { room: this.code, player: this.analytics.pseudonym(token) });
     } else {
       this.updatePlayer(player.id, { connected: true, awaySince: null });
       if (!this.connected(player.id)) this.notice(`${player.name} IS BACK`, 'join');
     }
     this.peers.set(peer, player.id);
+    this.notePeak();
     peer.send({ t: 'welcome', room: this.code, playerId: player.id });
     this.broadcast([]);
     return this.player(player.id)!;
@@ -114,6 +130,7 @@ export class Room {
     const away = this.game.players.find((p) => p.seat === seat);
     if (away) this.updatePlayer(away.id, { seat: null });
     this.updatePlayer(id, { seat });
+    this.notePeak();
     this.notice(`${me.name} SAT DOWN`, 'join');
     this.broadcast([]);
     return null;
@@ -140,8 +157,31 @@ export class Room {
     });
     if (!r.ok) return r.error;
     this.game = r.game;
+    this.stats.actions++;
+    if (intent.type === 'deal' && !this.stats.started) {
+      this.stats.started = true;
+      this.analytics.track('game_started', { room: this.code, props: { seated: this.seatedCount() } });
+    }
     this.broadcast(r.events);
     return null;
+  }
+
+  /** The room is going away (abandoned, or the server is stopping): report how it went. */
+  end(reason: 'idle' | 'shutdown') {
+    if (this.stats.ended) return;
+    this.stats.ended = true;
+    const { createdAt, peakSeated, players, actions, started } = this.stats;
+    this.analytics.track('room_ended', {
+      room: this.code,
+      props: {
+        minutes: Math.round((this.lastActive - createdAt) / 6000) / 10,
+        peakSeated,
+        players,
+        actions,
+        started,
+        reason,
+      },
+    });
   }
 
   /** Send every peer its own redacted view. Redaction happens per player, never per room. */
@@ -158,6 +198,13 @@ export class Room {
   private pending: GameEvent[] = [];
   private notice(text: string, sfx: 'join' | 'drop') {
     this.pending.push({ type: 'notice', text, sfx });
+  }
+
+  private seatedCount() {
+    return this.game.players.filter((p) => p.seat !== null).length;
+  }
+  private notePeak() {
+    this.stats.peakSeated = Math.max(this.stats.peakSeated, this.seatedCount());
   }
 
   private connected(id: string) {

@@ -365,3 +365,35 @@ on CI means a commit that breaks the build or tests never reaches players, and s
 avoids needlessly ending open games (rooms live in memory, see 17).
 
 **Gotcha.** Render can't move an existing service to another region. Changing `region` means deleting the service and creating it again from the Blueprint.
+
+## 24. Game analytics on the server, privacy first
+
+**Decision.** The server records five events (`room_created`, `player_joined`, `game_started`, `room_ended`
+with duration, peak seated players and number of actions, and `feedback_sent`) into a Supabase table, and a
+`analytics_daily` view summarises them per day (US Eastern).
+
+**Why server-side, not a tracking script?** Page-view tools (Google Analytics, Plausible, Cloudflare) say who
+*visited*. For a game, the question is who *played*, and only the server knows that. A server-side event
+also can't be blocked by ad-blockers, which hide 20–40% of visitors from client-side scripts. A page-view tool
+is still worth adding later for traffic sources; Cloudflare Web Analytics is free and cookieless.
+
+**Privacy by design.** No names, IP addresses, cookies or typed text. To count *returning* players without
+identifying anyone, each player is stored as `HMAC-SHA256(ANALYTICS_SECRET, browserToken)`, truncated:
+- the same browser always gives the same pseudonym, so returns are countable;
+- it can't be reversed into the token, and without the server's secret nobody can compute it for a known token.
+
+This kind of first-party, cookieless measurement doesn't need a consent banner. Adding accounts, ads or
+third-party scripts would change that.
+
+**Engineering choices.**
+- **Batching:** events are buffered and written every 15 s (or every 50 events), one HTTP request per batch
+  instead of one per event.
+- **Fire and forget:** `track()` never waits and never throws, so a slow or broken database can't slow
+  down a game. Failed writes are retried with the next batch, capped at 2,000 buffered rows.
+- **Shutdown:** on SIGTERM (every deploy), all rooms are reported as ended and the buffer is flushed before
+  the process exits. Otherwise every deploy would silently lose the last 15 seconds of events.
+- **Same lock-down as feedback:** RLS on, no policies, insert granted only to the server's role. The view uses
+  `security_invoker` so it can't be used to read around that.
+- **Testable:** `Room` only knows a tiny `RoomAnalytics` interface (`track`, `pseudonym`); tests pass a fake
+  and assert on the events. The SQL was checked against PGlite (Postgres compiled to WebAssembly) before it
+  touched the real database.

@@ -42,6 +42,7 @@ apps/server/            Node: HTTP API + WebSockets + serves the built client
   src/room.ts             One table: players, reconnect tokens, broadcast
   src/app.ts              HTTP routes and WebSocket wiring
   src/feedback/store.ts   Feedback storage (Supabase, or a local file)
+  src/analytics/          Anonymous game analytics, batched into Supabase
 apps/client/            React + Vite
   src/net/RoomClient.ts   WebSocket client with reconnection
   src/table/              The tilted table: projection math, Game (interactions), Plane, seats, hand
@@ -50,7 +51,8 @@ apps/client/            React + Vite
   src/styles/             CSS, one file per area
 prototype/omni-card.html  The original single-file prototype (reference for look and feel; don't edit)
 docs/decisions.md         Every design decision and its trade-offs. Start here to learn the codebase.
-supabase/migrations/      SQL for the feedback table
+supabase/migrations/      SQL for the feedback and analytics tables (run in order)
+supabase/queries/         Saved analytics questions to paste into the SQL Editor
 render.yaml               One-click deploy blueprint for Render
 ```
 
@@ -68,13 +70,26 @@ You need free accounts on [GitHub](https://github.com), [Supabase](https://supab
 [Render](https://render.com).
 
 1. **Push this repo to GitHub.**
-2. **Create the feedback table.** In Supabase, create a project, open **SQL Editor**, paste
-   `supabase/migrations/0001_feedback.sql` and run it.
+2. **Create the tables.** In Supabase, create a project, open **SQL Editor**, and run each file in
+   `supabase/migrations/` in order (`0001_feedback.sql`, then `0002_analytics.sql`).
 3. **Get two values** from Supabase **Project Settings → API**: the project URL, and a **secret** key
    (`sb_secret_...`; the legacy `service_role` key also works). Keep the secret key private: it bypasses Row Level Security.
 4. **Deploy on Render.** **New → Blueprint**, pick your repo; Render reads `render.yaml`. When asked, set
    `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. The first build takes a few minutes.
 5. **Play.** Open the `onrender.com` URL. Read feedback in Supabase under **Table Editor → feedback**.
+
+## Usage numbers
+
+The server records a few anonymous game events (tables created, players joining, games started, how long
+tables last) in Supabase. No names, IP addresses, cookies or anything typed are stored, and players
+appear only as a one-way pseudonym. In the SQL Editor:
+
+```sql
+select * from analytics_daily limit 30;
+```
+
+More ready-made questions (returning players, the create → join → play funnel, busiest hours) are in
+`supabase/queries/analytics.sql`. Set `ANALYTICS=off` to record nothing.
 
 Free-tier caveats: the server sleeps after ~15 idle minutes (first visit then takes up to a minute), and
 tables are kept in memory, so a sleep or redeploy ends open games. See `docs/decisions.md` #17 for the upgrade path.

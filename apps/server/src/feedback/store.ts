@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { Feedback } from '@omni/shared';
+import { supabaseInsert } from '../supabase';
 
 export interface FeedbackRecord extends Feedback {
   userAgent?: string;
@@ -27,25 +28,13 @@ export class SupabaseFeedbackStore implements FeedbackStore {
   ) {}
 
   async save(f: FeedbackRecord): Promise<void> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Prefer: 'return=minimal',
-      apikey: this.key,
-    };
-    // New `sb_secret_` keys go only in `apikey`; legacy service_role JWTs also go in Authorization.
-    if (!this.key.startsWith('sb_')) headers.Authorization = `Bearer ${this.key}`;
-    const res = await fetch(`${this.url.replace(/\/$/, '')}/rest/v1/feedback`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        category: f.category,
-        message: f.message,
-        contact: f.contact || null,
-        room: f.room || null,
-        user_agent: f.userAgent?.slice(0, 300) ?? null,
-      }),
+    await supabaseInsert(this.url, this.key, 'feedback', {
+      category: f.category,
+      message: f.message,
+      contact: f.contact || null,
+      room: f.room || null,
+      user_agent: f.userAgent?.slice(0, 300) ?? null,
     });
-    if (!res.ok) throw new Error(`Supabase insert failed: ${res.status} ${await res.text()}`);
   }
 }
 

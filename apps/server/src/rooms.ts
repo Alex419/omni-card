@@ -1,5 +1,5 @@
 import type { Rng } from '@omni/shared';
-import { Room } from './room';
+import { Room, type RoomAnalytics } from './room';
 import { roomCode } from './rng';
 
 const EMPTY_ROOM_TTL_MS = 30 * 60_000;
@@ -14,6 +14,7 @@ export class RoomRegistry {
   constructor(
     private rng: Rng,
     private now: () => number = Date.now,
+    private analytics?: RoomAnalytics,
   ) {}
 
   get size() {
@@ -25,8 +26,9 @@ export class RoomRegistry {
     if (this.rooms.size >= MAX_ROOMS) return null;
     let code = roomCode();
     while (this.rooms.has(code)) code = roomCode();
-    const room = new Room(code, this.rng, this.now);
+    const room = new Room(code, this.rng, this.now, this.analytics);
     this.rooms.set(code, room);
+    this.analytics?.track('room_created', { room: code });
     return room;
   }
 
@@ -38,7 +40,15 @@ export class RoomRegistry {
   sweep() {
     const now = this.now();
     for (const [code, room] of this.rooms) {
-      if (room.peerCount === 0 && now - room.lastActive > EMPTY_ROOM_TTL_MS) this.rooms.delete(code);
+      if (room.peerCount === 0 && now - room.lastActive > EMPTY_ROOM_TTL_MS) {
+        room.end('idle');
+        this.rooms.delete(code);
+      }
     }
+  }
+
+  /** The server is stopping: every room ends now (rooms live in memory). */
+  endAll() {
+    for (const room of this.rooms.values()) room.end('shutdown');
   }
 }

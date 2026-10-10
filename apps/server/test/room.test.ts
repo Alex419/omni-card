@@ -123,4 +123,39 @@ describe('Room', () => {
     expect(cleanName('  zoë <script>  ')).toBe('ZO SCRIPT');
     expect(cleanName('🙂')).toBe('PLAYER');
   });
+
+  it('reports analytics: one game start, and totals when the room ends', () => {
+    const events: { name: string; props?: Record<string, unknown> }[] = [];
+    let now = 0;
+    const r = new Room('ABCDE', mulberry32(1), () => now, {
+      track: (name, fields) => events.push({ name, props: fields?.props }),
+      pseudonym: (t) => `x${t.length}`,
+    });
+    const a = new FakePeer();
+    const b = new FakePeer();
+    r.join(a, 'alex', TOKEN_A);
+    r.join(b, 'maya', TOKEN_B);
+    r.sit(b, 1);
+    r.intent(a, { type: 'deal', count: 2 });
+    r.intent(a, { type: 'deal', count: 2 });
+    now = 30 * 60_000;
+    r.intent(b, { type: 'shuffleZone' });
+    r.end('idle');
+    r.end('idle'); // only reported once
+    expect(events.map((e) => e.name)).toEqual([
+      'player_joined',
+      'player_joined',
+      'game_started',
+      'room_ended',
+    ]);
+    expect(events[2]!.props).toEqual({ seated: 2 });
+    expect(events[3]!.props).toEqual({
+      minutes: 30,
+      peakSeated: 2,
+      players: 2,
+      actions: 3,
+      started: true,
+      reason: 'idle',
+    });
+  });
 });

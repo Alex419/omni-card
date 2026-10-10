@@ -22,5 +22,14 @@ export const config = {
   supabaseKey: env.SUPABASE_SECRET_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY ?? '',
   /** Where feedback goes when Supabase isn't configured (local dev). */
   feedbackFile: env.FEEDBACK_FILE ?? '.data/feedback.jsonl',
+  /** Where analytics go when Supabase isn't configured (local dev). */
+  analyticsFile: env.ANALYTICS_FILE ?? '.data/analytics.jsonl',
+  /**
+   * Secret that turns browser tokens into analytics pseudonyms. Must stay the same across
+   * restarts or returning players look new. Render generates one (see render.yaml).
+   */
+  analyticsSecret: env.ANALYTICS_SECRET ?? '',
+  /** Set ANALYTICS=off to record nothing. */
+  analyticsEnabled: env.ANALYTICS !== 'off',
 };
 export type Config = typeof config;

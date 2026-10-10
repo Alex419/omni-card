@@ -13,9 +13,12 @@ import type { Config } from '../src/config';
 let app: ReturnType<typeof createApp>;
 let base: string;
 let feedbackFile: string;
+let analyticsFile: string;
 
 beforeAll(async () => {
-  feedbackFile = join(await mkdtemp(join(tmpdir(), 'omni-')), 'feedback.jsonl');
+  const dir = await mkdtemp(join(tmpdir(), 'omni-'));
+  feedbackFile = join(dir, 'feedback.jsonl');
+  analyticsFile = join(dir, 'analytics.jsonl');
   const config: Config = {
     port: 0,
     host: '127.0.0.1',
@@ -24,6 +27,9 @@ beforeAll(async () => {
     supabaseUrl: '',
     supabaseKey: '',
     feedbackFile,
+    analyticsFile,
+    analyticsSecret: 'test-secret',
+    analyticsEnabled: true,
   };
   app = createApp(config, mulberry32(9));
   await new Promise<void>((resolve) => app.server.listen(0, '127.0.0.1', resolve));
@@ -124,5 +130,24 @@ describe('server', () => {
       .map((l) => JSON.parse(l));
     expect(saved).toHaveLength(1);
     expect(saved[0]).toMatchObject({ category: 'idea', message: 'Add a timer please' });
+  });
+
+  it('records analytics without names or tokens', async () => {
+    await app.analytics.flush();
+    const rows = (await readFile(analyticsFile, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as { name: string; player: string | null; props: Record<string, unknown> });
+    const names = rows.map((r) => r.name);
+    expect(names).toContain('room_created');
+    expect(names).toContain('player_joined');
+    expect(names).toContain('game_started');
+    expect(names).toContain('feedback_sent');
+    const raw = JSON.stringify(rows);
+    // Players appear only as pseudonyms: never their token or their name.
+    expect(raw).not.toContain('a'.repeat(32));
+    expect(raw).not.toContain('MAYA');
+    const joins = rows.filter((r) => r.name === 'player_joined').map((r) => r.player);
+    expect(joins.every((p) => typeof p === 'string' && /^[0-9a-f]{16}$/.test(p))).toBe(true);
   });
 });

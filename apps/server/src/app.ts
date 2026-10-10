@@ -3,11 +3,20 @@ import type { Rng, ServerMessage } from '@omni/shared';
 import { ClientMessageSchema, FeedbackSchema } from '@omni/shared/schemas';
 import sirv from 'sirv';
 import { WebSocketServer, type WebSocket } from 'ws';
+import {
+  BufferedAnalytics,
+  fileSink,
+  noAnalytics,
+  pseudonym,
+  supabaseSink,
+  type Analytics,
+} from './analytics/analytics';
 import type { Config } from './config';
 import { FileFeedbackStore, SupabaseFeedbackStore, type FeedbackStore } from './feedback/store';
 import { log } from './log';
 import { RateLimiter } from './rateLimit';
 import type { Peer, Room } from './room';
+import { randomId } from './rng';
 import { RoomRegistry } from './rooms';
 
 /**
@@ -16,11 +25,22 @@ import { RoomRegistry } from './rooms';
  * run it on a random port.
  */
 export function createApp(config: Config, rng: Rng) {
-  const rooms = new RoomRegistry(rng);
-  const feedback: FeedbackStore =
-    config.supabaseUrl && config.supabaseKey
-      ? new SupabaseFeedbackStore(config.supabaseUrl, config.supabaseKey)
-      : new FileFeedbackStore(config.feedbackFile);
+  const supabase = config.supabaseUrl && config.supabaseKey;
+  const analytics: Analytics = !config.analyticsEnabled
+    ? noAnalytics
+    : supabase
+      ? new BufferedAnalytics('supabase', supabaseSink(config.supabaseUrl, config.supabaseKey))
+      : new BufferedAnalytics('file', fileSink(config.analyticsFile));
+  if (!config.analyticsSecret && config.production && config.analyticsEnabled)
+    log.warn('ANALYTICS_SECRET is not set: returning players will look new after each restart');
+  const secret = config.analyticsSecret || randomId(24);
+  const rooms = new RoomRegistry(rng, Date.now, {
+    track: (...args) => analytics.track(...args),
+    pseudonym: (token) => pseudonym(secret, token),
+  });
+  const feedback: FeedbackStore = supabase
+    ? new SupabaseFeedbackStore(config.supabaseUrl, config.supabaseKey)
+    : new FileFeedbackStore(config.feedbackFile);
   const roomLimiter = new RateLimiter(10, 10 / 60);
   const feedbackLimiter = new RateLimiter(5, 5 / 600);
   const serveClient = config.clientDist
@@ -56,6 +76,10 @@ export function createApp(config: Config, rng: Rng) {
       if (!parsed.success) return json(res, 400, { error: 'Please write at least a few words.' });
       try {
         await feedback.save({ ...parsed.data, userAgent: req.headers['user-agent'] });
+        analytics.track('feedback_sent', {
+          room: parsed.data.room,
+          props: { category: parsed.data.category },
+        });
       } catch (err) {
         log.error('feedback save failed', { store: feedback.name, err: String(err) });
         return json(res, 502, { error: 'Could not save feedback. Try again later.' });
@@ -141,8 +165,12 @@ export function createApp(config: Config, rng: Rng) {
     server,
     rooms,
     feedback,
+    analytics,
     async close() {
       clearInterval(heartbeat);
+      // Rooms live in memory, so stopping ends them all: record that before the data is gone.
+      rooms.endAll();
+      await analytics.close();
       for (const ws of wss.clients) ws.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       await new Promise<void>((resolve) => server.close(() => resolve()));

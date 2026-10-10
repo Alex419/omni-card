@@ -10,6 +10,7 @@ app.server.listen(config.port, config.host, () => {
     port: config.port,
     client: config.clientDist ? 'serving built client' : 'not built (use the Vite dev server)',
     feedback: app.feedback.name,
+    analytics: app.analytics.name,
   });
 });
 
