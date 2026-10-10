@@ -16,4 +16,9 @@ create table if not exists public.feedback (
 -- bypasses RLS. You read it in the dashboard's Table Editor.
 alter table public.feedback enable row level security;
 
+-- Newer Supabase projects don't expose new tables to the API automatically. Grant exactly what
+-- the server needs: service_role (the secret key) may insert. Nothing is granted to anon or
+-- authenticated, so the public key can't touch this table even if RLS were turned off.
+grant insert on table public.feedback to service_role;
+
 create index if not exists feedback_created_at_idx on public.feedback (created_at desc);
