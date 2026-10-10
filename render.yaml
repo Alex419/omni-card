@@ -1,0 +1,22 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repo.
+# One free web service runs everything: the built React client, the JSON API and the WebSocket.
+services:
+  - type: web
+    name: omni-card
+    runtime: node
+    plan: free
+    # --include=dev: the build needs TypeScript, Vite and tsup even though NODE_ENV=production.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: '22'
+      # Set these two in the dashboard (they are secrets, so they are not stored in this file).
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
