@@ -139,43 +139,51 @@
   }
 }
 
+/* Small corner buttons that sit mostly outside the outline, clear of the cards inside. */
 .zbtn {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   border: 0;
   padding: 0;
   cursor: pointer;
   z-index: 20;
   background: var(--ink);
   box-shadow:
-    0 0 0 3px #000,
-    0 4px 0 3px rgba(0, 0, 0, 0.35);
+    0 0 0 2px #000,
+    0 3px 0 2px rgba(0, 0, 0, 0.35);
   display: grid;
   place-items: center;
   font-family: var(--font-pixel);
-  font-size: 9px;
+  font-size: 7px;
   color: #000;
 }
 .zbtn:hover {
   background: var(--ink-2);
 }
 .zbtn i {
-  width: 18px;
-  height: 18px;
+  display: block;
   background-size: 100% 100%;
   image-rendering: pixelated;
 }
+.zbtn .i-cog {
+  width: 14px;
+  height: 14px;
+}
+.zbtn .i-grip {
+  width: 10px;
+  height: 10px;
+}
 .zcog {
-  right: -10px;
-  bottom: -10px;
+  right: -14px;
+  bottom: -14px;
 }
 .zcog.open {
   background: var(--orange);
 }
 .zgrip {
-  left: -10px;
-  top: -10px;
+  left: -14px;
+  top: -14px;
   cursor: move;
   opacity: 0.55;
 }
@@ -184,10 +192,10 @@
   opacity: 1;
 }
 .ztidy {
-  left: -10px;
-  bottom: -10px;
+  left: -14px;
+  bottom: -14px;
   width: auto;
-  padding: 0 6px;
+  padding: 0 5px;
   background: var(--green);
 }
 .ztidy:hover {

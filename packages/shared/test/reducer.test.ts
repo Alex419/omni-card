@@ -125,6 +125,52 @@ describe('moving cards', () => {
     expect(discard.cards[0]!.j).not.toBeNull();
   });
 
+  it('fans out a run played onto a messy pile so everyone can read every card', () => {
+    const { game, rng } = setup(2);
+    let g = act(game, 0, { type: 'deal', count: 5 }, rng).game;
+    const run = g.table.hands[0]!;
+    const r = act(
+      g,
+      0,
+      {
+        type: 'moveCards',
+        from: { kind: 'hand' },
+        vids: run,
+        to: { kind: 'zone', id: 'z2', x: 600, y: 250 },
+      },
+      rng,
+    );
+    g = r.game;
+    const pile = g.table.zones.find((z) => z.id === 'z2')!;
+    expect(pile.cards.map((c) => c.fan)).toEqual([0, 1, 2, 3, 4].map((i) => [i, 5]));
+    expect(r.events).toContainEqual({ type: 'log', by: 0, text: 'PLAYED 5 CARDS ON DISCARD', sfx: 'drop' });
+    // The other player sees all five faces, in the order they were played.
+    const seen = viewFor(g, 'p1', 0).zones.find((z) => z.id === 'z2')!.cards;
+    expect(seen.map((c) => c.face)).toEqual(run.map((id) => id.split('.')[0]));
+    // TIDY squares the pile up again.
+    g = act(g, 1, { type: 'tidyZone', id: 'z2' }, rng).game;
+    expect(g.table.zones.find((z) => z.id === 'z2')!.cards.every((c) => !c.fan && !c.j)).toBe(true);
+  });
+
+  it('keeps a neat pile neat: no fan, only the top card shows', () => {
+    const { game, rng } = setup(2);
+    let g = act(game, 0, { type: 'updateZone', id: 'z2', mess: false }, rng).game;
+    g = act(g, 0, { type: 'deal', count: 3 }, rng).game;
+    g = act(
+      g,
+      0,
+      {
+        type: 'moveCards',
+        from: { kind: 'hand' },
+        vids: g.table.hands[0]!,
+        to: { kind: 'zone', id: 'z2', x: 0, y: 0 },
+      },
+      rng,
+    ).game;
+    expect(g.table.zones[1]!.cards.every((c) => !c.fan)).toBe(true);
+    expect(viewFor(g, 'p1', 0).zones[1]!.cards.filter((c) => c.face)).toHaveLength(1);
+  });
+
   it('reorders your hand privately: no undo step, no event', () => {
     const { game, rng } = setup(2);
     const g = act(game, 0, { type: 'deal', count: 3 }, rng).game;

@@ -1,5 +1,9 @@
 import {
   CARD_SIZES,
+  clampLoose,
+  clampTableNote,
+  clampZone,
+  resizedConfig,
   offsetToView,
   seatsForViewer,
   toTable,
@@ -118,11 +122,39 @@ export function zoneCardSpots(z: ZoneView, m: Model) {
     const depth = n - 1 - i;
     const j = c.j ?? [0, 0, 0];
     const o = offsetToView(m.edge, j[0], j[1]);
+    // A group played together fans left to right in *your* view, whichever way the table is
+    // turned, with each card far enough along to show the corner of the one beneath.
+    const fanX = c.fan ? (c.fan[0] - (c.fan[1] - 1) / 2) * m.CW * 0.32 : 0;
     return {
-      x: box.w / 2 + o.x,
+      x: box.w / 2 + o.x + fanX,
       y: box.h / 2 + o.y + (z.messy ? 0 : Math.min(depth, 3) * 2),
       r: j[2],
       depth,
     };
   });
+}
+
+/**
+ * The view as it will look once a table resize is applied, computed with the same clamps the
+ * server uses. Shown while you drag the resize grip; only the final size is sent to the server.
+ */
+export function previewResize(view: TableView, nw: number, nh: number): TableView {
+  const { cfg, dx, dy } = resizedConfig(view.cfg, nw, nh);
+  return {
+    ...view,
+    cfg,
+    zones: view.zones.map((z) => {
+      const [x, y] = clampZone(cfg, z, z.x + dx, z.y + dy);
+      return { ...z, x, y };
+    }),
+    loose: view.loose.map((c) => {
+      const [x, y] = clampLoose(cfg, c.x + dx, c.y + dy);
+      return { ...c, x, y };
+    }),
+    notes: view.notes.map((n) => {
+      if (n.at.kind !== 'table') return n;
+      const [x, y] = clampTableNote(cfg, n.at.x + dx, n.at.y + dy);
+      return { ...n, at: { ...n.at, x, y } };
+    }),
+  };
 }

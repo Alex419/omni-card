@@ -23,6 +23,11 @@ export interface Card {
   tag: string;
   /** Messy-pile jitter, or null when neat. Only used inside stack zones. */
   j: Jitter | null;
+  /**
+   * Position in a group played together onto a messy pile: [index, group size]. The group is
+   * drawn as a small fan, left to right for every viewer, so a run like 2-3-4-5-6 stays readable.
+   */
+  fan?: [number, number] | null;
 }
 
 export interface LooseCard extends Card {

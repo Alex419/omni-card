@@ -1,6 +1,7 @@
 import { allCardIds } from './cards';
-import { CARD_SIZES, LIMITS, QUIPS, tableSizeFor } from './constants';
+import { LIMITS, QUIPS, tableSizeFor } from './constants';
 import type { GameEvent, Sfx } from './events';
+import * as layout from './layout';
 import type { Intent, Source, Target } from './protocol';
 import { newTag, pick, randInt, shuffleInPlace, type Rng } from './rng';
 import { freshDeck } from './setup';
@@ -109,27 +110,10 @@ function seatName(c: RunCtx, seat: number): string {
   return c.game.players.find((p) => p.seat === seat)?.name ?? `SEAT ${seat + 1}`;
 }
 
-const cardDims = (t: TableState) => CARD_SIZES[t.cfg.size];
-
-function clampLoose(t: TableState, x: number, y: number): [number, number] {
-  const [cw, ch] = cardDims(t);
-  const { tw: W, th: H } = t.cfg;
-  return [
-    Math.round(clamp(x, 26 + cw / 2, W - 26 - cw / 2)),
-    Math.round(clamp(y, 26 + ch / 2, H - 26 - ch / 2)),
-  ];
-}
-
-function clampZone(t: TableState, z: Zone, x: number, y: number): [number, number] {
-  const { tw: W, th: H } = t.cfg;
-  const half = z.layout === 'spread' ? Math.min(z.w / 2 + 26, W / 2) : 80;
-  return [Math.round(clamp(x, half, W - half)), Math.round(clamp(y, 90, H - 80))];
-}
-
-const clampTableNote = (t: TableState, x: number, y: number): [number, number] => [
-  Math.round(clamp(x, 80, t.cfg.tw - 80)),
-  Math.round(clamp(y, 80, t.cfg.th - 80)),
-];
+// Clamps take the table's config; these wrappers keep the call sites short.
+const clampLoose = (t: TableState, x: number, y: number) => layout.clampLoose(t.cfg, x, y);
+const clampZone = (t: TableState, z: Zone, x: number, y: number) => layout.clampZone(t.cfg, z, x, y);
+const clampTableNote = (t: TableState, x: number, y: number) => layout.clampTableNote(t.cfg, x, y);
 
 function zoneById(t: TableState, id: string | undefined): Zone {
   return t.zones.find((z) => z.id === id) ?? reject('THAT ZONE IS GONE');
@@ -191,14 +175,19 @@ function intoZone(t: TableState, c: RunCtx, z: Zone, cards: Card[], tossX: numbe
   const bx = clamp((tossX - z.x) * 0.4, -24, 24);
   const by = clamp((tossY - z.y) * 0.4, -18, 18);
   const messy = z.layout === 'stack' && z.mess;
-  for (const card of cards) {
+  // Several cards played at once onto a messy pile land as one fanned group, so all stay readable.
+  const group = messy && cards.length > 1;
+  const base = jitter(c.rng, bx, by);
+  const tilt = randInt(c.rng, -6, 6);
+  cards.forEach((card, i) => {
     z.cards.push({
       id: card.id,
       up: z.face === 'up',
       tag: card.tag,
-      j: messy ? jitter(c.rng, bx, by) : null,
+      j: !messy ? null : group ? [base[0], base[1], tilt] : jitter(c.rng, bx, by),
+      fan: group ? [i, cards.length] : null,
     });
-  }
+  });
 }
 
 function onTable(t: TableState, c: RunCtx, cards: Card[], x: number, y: number, up: boolean | undefined) {
@@ -243,12 +232,8 @@ function gatherAll(t: TableState, c: RunCtx): Zone {
 }
 
 function resize(t: TableState, nw: number, nh: number) {
-  nw = Math.round(clamp(nw, LIMITS.tableMinW, LIMITS.tableMaxW));
-  nh = Math.round(clamp(nh, LIMITS.tableMinH, LIMITS.tableMaxH));
-  const dx = (nw - t.cfg.tw) / 2;
-  const dy = (nh - t.cfg.th) / 2;
-  t.cfg.tw = nw;
-  t.cfg.th = nh;
+  const { cfg, dx, dy } = layout.resizedConfig(t.cfg, nw, nh);
+  t.cfg = cfg;
   for (const z of t.zones) [z.x, z.y] = clampZone(t, z, z.x + dx, z.y + dy);
   for (const l of t.loose) [l.x, l.y] = clampLoose(t, l.x + dx, l.y + dy);
   for (const n of t.notes)
@@ -325,11 +310,13 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
         t.hands[to.seat]!.push(...cards.map((x) => x.id));
         log(c, to.seat === c.seat ? '' : `GAVE ${plural(n, 'CARD')} TO ${seatName(c, to.seat)}`, 'give');
       } else if (to.kind === 'zone') {
-        intoZone(t, c, zoneById(t, to.id), cards, to.x, to.y);
-        log(c, '', 'drop');
+        const z = zoneById(t, to.id);
+        intoZone(t, c, z, cards, to.x, to.y);
+        // Playing several cards from your hand is worth announcing: others should look.
+        log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS ON ${z.name}` : '', 'drop');
       } else {
         onTable(t, c, cards, to.x, to.y, intent.up);
-        log(c, '', 'drop');
+        log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS` : '', 'drop');
       }
       return { label: targetLabel(to, n) };
     }
@@ -439,7 +426,7 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
       }
       if (intent.mess !== undefined) {
         z.mess = intent.mess;
-        if (!z.mess) for (const card of z.cards) card.j = null;
+        if (!z.mess) for (const card of z.cards) [card.j, card.fan] = [null, null];
       }
       if (intent.deck !== undefined) {
         if (intent.deck) for (const o of t.zones) o.deck = false;
@@ -451,7 +438,7 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
 
     case 'tidyZone': {
       const z = zoneById(t, intent.id);
-      for (const card of z.cards) card.j = null;
+      for (const card of z.cards) [card.j, card.fan] = [null, null];
       log(c, '', 'tidy');
       return { label: `TIDY ${z.name}` };
     }
@@ -465,6 +452,7 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
       // New tags: after a shuffle nobody can follow a hidden card.
       for (const card of z.cards) {
         card.j = null;
+        card.fan = null;
         card.tag = newTag(c.rng);
       }
       log(c, `SHUFFLED ${z.name}`, 'shuffle', z.id);
@@ -483,7 +471,7 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
       const z = zoneById(t, intent.id);
       z.cards.forEach((card, i) => {
         const [x, y] = clampLoose(t, z.x + (i % 6) * 16 - 40, z.y + Math.floor(i / 6) * 10);
-        t.loose.push({ ...card, j: null, x, y, r: randInt(c.rng, -8, 8) });
+        t.loose.push({ id: card.id, up: card.up, tag: card.tag, j: null, x, y, r: randInt(c.rng, -8, 8) });
       });
       t.zones = t.zones.filter((o) => o !== z);
       log(c, `REMOVED ${z.name}`, 'drop');

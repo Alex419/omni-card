@@ -30,7 +30,9 @@ interface Truth {
 function canSee(z: Zone, i: number): boolean {
   const c = z.cards[i]!;
   const messy =
-    z.layout === 'stack' && z.cards.length > 1 && z.cards.some((q) => q.j && q.j.some((v) => v !== 0));
+    z.layout === 'stack' &&
+    z.cards.length > 1 &&
+    z.cards.some((q) => q.fan || (q.j && q.j.some((v) => v !== 0)));
   return c.up && (z.layout === 'spread' || messy || i === z.cards.length - 1);
 }
 

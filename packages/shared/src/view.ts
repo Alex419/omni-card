@@ -33,6 +33,8 @@ export interface ZoneCardView extends CardView {
   j: Jitter | null;
   /** Face up? Visible from the side of a pile even when the face itself is buried. */
   up: boolean;
+  /** [index, size] when this card was played as part of a group (see Card.fan). */
+  fan: [number, number] | null;
 }
 
 export interface ZoneView {
@@ -87,10 +89,11 @@ export interface TableView {
 const NEAT_SHOWN = 4;
 const MESSY_SHOWN = 14;
 
+/** A pile is messy once any card in it is askew or fanned out. */
 export const isMessy = (z: Zone) =>
   z.layout === 'stack' &&
   z.cards.length > 1 &&
-  z.cards.some((c) => c.j !== null && (c.j[0] || c.j[1] || c.j[2]));
+  z.cards.some((c) => !!c.fan || (c.j !== null && (c.j[0] || c.j[1] || c.j[2])));
 
 /** Index of the first card of a zone that gets sent to clients. */
 export function firstShown(z: Zone): number {
@@ -137,7 +140,7 @@ export function viewFor(game: GameState, playerId: string, now: number): TableVi
     const cards: ZoneCardView[] = [];
     for (let i = start; i < z.cards.length; i++) {
       const c = z.cards[i]!;
-      cards.push({ ...cardView(c, zoneCardVisible(z, i)), j: c.j, up: c.up });
+      cards.push({ ...cardView(c, zoneCardVisible(z, i)), j: c.j, up: c.up, fan: c.fan ?? null });
     }
     return {
       id: z.id,

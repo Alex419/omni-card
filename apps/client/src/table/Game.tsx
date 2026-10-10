@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { resizedConfig } from '@omni/shared';
 import type { CardView, Intent, NoteColor, NoteSpot, Source, Target, TableView } from '@omni/shared';
 import { cardClass } from '../art/sheet';
 import { ensureAudio, setSound, SFX, soundOn, tick } from '../audio/sfx';
@@ -12,7 +13,7 @@ import { SelBar } from '../ui/SelBar';
 import { Toast, useToast } from '../ui/Toast';
 import { Toolbar } from '../ui/Toolbar';
 import { HandDock } from './HandDock';
-import { buildModel } from './model';
+import { buildModel, previewResize } from './model';
 import { Plane } from './Plane';
 import { fit, proj, unproj, type Layout } from './projection';
 import { SeatsLayer, type Reaction } from './SeatsLayer';
@@ -73,7 +74,7 @@ type Drag =
       base: Set<string>;
       rect: { x: number; y: number; w: number; h: number } | null;
     }
-  | { kind: 'resize'; x0: number; y0: number; moved: boolean; last: number };
+  | { kind: 'resize'; x0: number; y0: number; moved: boolean };
 
 type PopState =
   | { mode: 'zone'; id: string; anchor: Anchor }
@@ -107,7 +108,13 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
     return () => ro.disconnect();
   }, []);
 
-  const m = useMemo(() => buildModel(view), [view]);
+  // While you drag the resize grip the table is resized locally; the server hears about it once, on release.
+  const [preview, setPreview] = useState<{ tw: number; th: number } | null>(null);
+  const shown = useMemo(
+    () => (preview ? previewResize(view, preview.tw, preview.th) : view),
+    [view, preview],
+  );
+  const m = useMemo(() => buildModel(shown), [shown]);
   const fitted = useMemo(
     () => fit(scene.w, scene.h, m.VW, m.VH, m.sizeMul),
     [scene.w, scene.h, m.VW, m.VH, m.sizeMul],
@@ -143,8 +150,8 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
   const handCenters = useRef<number[]>([]);
 
   // Handlers registered once on window read the latest values through this ref.
-  const live = useRef({ view, m, L, sel, tsel, pad, canPlay, placing });
-  live.current = { view, m, L, sel, tsel, pad, canPlay, placing };
+  const live = useRef({ view: shown, m, L, sel, tsel, pad, canPlay, placing, preview });
+  live.current = { view: shown, m, L, sel, tsel, pad, canPlay, placing, preview };
 
   /* ---------- talking to the server ---------- */
 
@@ -229,17 +236,27 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
   }, [zonePopFor, view]);
 
   // Cards that just arrived somewhere get a little pop animation.
-  const prevLoc = useRef<Map<string, string> | null>(null);
+  const prevLoc = useRef<{ loc: Map<string, string>; counts: Map<string, number> } | null>(null);
   useEffect(() => {
     const loc = new Map<string, string>();
+    const counts = new Map(view.zones.map((z) => [z.id, z.count]));
     view.hand?.forEach((c) => loc.set(c.vid, 'hand'));
     view.loose.forEach((c) => loc.set(c.vid, 'loose'));
-    view.zones.forEach((z) => z.cards.forEach((c) => loc.set(c.vid, z.id)));
     view.notes.forEach((n) => loc.set(n.id, n.at.kind === 'seat' ? `s${n.at.seat}` : 'table'));
     const prev = prevLoc.current;
-    prevLoc.current = loc;
+    // In a pile, only the cards that were just added count as arrivals. Taking the top card
+    // reveals the one below (it gets a new id, and a buried card scrolls into the few we're
+    // sent), and that must not make the pile pop.
+    view.zones.forEach((z) => {
+      const added = prev ? Math.max(0, z.count - (prev.counts.get(z.id) ?? 0)) : 0;
+      const firstNew = z.layout === 'stack' ? z.cards.length - added : 0;
+      z.cards.forEach((c, i) => loc.set(c.vid, i >= firstNew ? z.id : `${z.id}:old`));
+    });
+    prevLoc.current = { loc, counts };
     if (!prev) return;
-    const changed = new Set([...loc].filter(([k, v]) => prev.get(k) !== v).map(([k]) => k));
+    const changed = new Set(
+      [...loc].filter(([k, v]) => !v.endsWith(':old') && prev.loc.get(k) !== v).map(([k]) => k),
+    );
     if (!changed.size || changed.size > 60) return;
     setFresh(changed);
     const t = setTimeout(() => setFresh(new Set()), 320);
@@ -341,7 +358,7 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
     if (t.closest('[data-grip]')) {
       e.preventDefault();
       frozen.current = live.current.L;
-      drag.current = { kind: 'resize', ...at, moved: false, last: 0 };
+      drag.current = { kind: 'resize', ...at, moved: false };
       closePop();
       return;
     }
@@ -470,11 +487,8 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
         const nVW = 2 * (p.x - mm.VW / 2);
         const nVH = 2 * (mm.VH / 2 - p.y);
         const [tw, th] = mm.edge === 'L' || mm.edge === 'R' ? [nVH, nVW] : [nVW, nVH];
-        // Throttled live updates; the server merges them into one undo step.
-        if (e.timeStamp - d.last > 120) {
-          d.last = e.timeStamp;
-          fire({ type: 'resizeTable', tw: Math.round(tw), th: Math.round(th) });
-        }
+        const { cfg } = resizedConfig(live.current.view.cfg, tw, th);
+        setPreview((p) => (p && p.tw === cfg.tw && p.th === cfg.th ? p : { tw: cfg.tw, th: cfg.th }));
         return;
       }
       if (d.kind === 'group') {
@@ -552,19 +566,17 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
       const d = drag.current;
       if (!d) return;
       drag.current = null;
-      const { view: v, m: mm, tsel: ts } = live.current;
+      const { view: v, tsel: ts } = live.current;
 
       if (d.kind === 'resize') {
         frozen.current = null;
-        if (d.moved) {
-          const p = viewPoint(e.clientX, e.clientY);
-          const nVW = 2 * (p.x - mm.VW / 2);
-          const nVH = 2 * (mm.VH / 2 - p.y);
-          const [tw, th] = mm.edge === 'L' || mm.edge === 'R' ? [nVH, nVW] : [nVW, nVH];
-          fire({ type: 'resizeTable', tw: Math.round(tw), th: Math.round(th) });
+        const final = live.current.preview;
+        if (d.moved && final) {
+          // One intent for the whole gesture. Keep showing the preview until the server confirms.
+          void send({ type: 'resizeTable', tw: final.tw, th: final.th }).then(() => setPreview(null));
           const r = sceneRef.current!.getBoundingClientRect();
           setScene({ w: r.width, h: r.height });
-        }
+        } else setPreview(null);
         rerender();
         return;
       }
@@ -713,7 +725,10 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
     };
 
     const cancel = () => {
-      if (drag.current?.kind === 'resize') frozen.current = null;
+      if (drag.current?.kind === 'resize') {
+        frozen.current = null;
+        setPreview(null);
+      }
       drag.current = null;
       overrides.current.clear();
       rerender();
@@ -856,7 +871,7 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
             <SeatsLayer
               L={L}
               m={m}
-              notes={view.notes}
+              notes={shown.notes}
               reactions={reactions}
               hot={hot}
               canSit={!canPlay}
@@ -866,9 +881,9 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
             <Plane
               L={L}
               m={m}
-              zones={view.zones}
-              loose={view.loose}
-              notes={view.notes}
+              zones={shown.zones}
+              loose={shown.loose}
+              notes={shown.notes}
               tsel={tsel}
               overrides={overrides.current}
               lifted={lifted}

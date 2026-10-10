@@ -20,33 +20,17 @@ function tileURL(w: number, h: number, base: string, dots: [string, number[][]][
   return c.toDataURL();
 }
 
-/** 9x9 pixel cog for the zone settings button. */
+/** 7x7 pixel cog for the zone settings button. */
 function cogURL(): string {
-  const [c, x] = canvas(9, 9);
-  blit(
-    x,
-    [
-      '...#.#...',
-      '.#######.',
-      '.##...##.',
-      '##.....##',
-      '.#..#..#.',
-      '##.....##',
-      '.##...##.',
-      '.#######.',
-      '...#.#...',
-    ],
-    0,
-    0,
-    PAL.paper,
-  );
+  const [c, x] = canvas(7, 7);
+  blit(x, ['..#.#..', '.#####.', '##...##', '.#.#.#.', '##...##', '.#####.', '..#.#..'], 0, 0, PAL.paper);
   return c.toDataURL();
 }
 
-/** 7x7 dotted grip for dragging a zone. */
+/** 5x5 grip: a centred 3x3 grid of dots for dragging a zone. */
 function gripURL(): string {
-  const [c, x] = canvas(7, 7);
-  blit(x, ['#.#.#..', '.......', '#.#.#..', '.......', '#.#.#..', '.......', '.......'], 0, 0, PAL.paper);
+  const [c, x] = canvas(5, 5);
+  blit(x, ['#.#.#', '.....', '#.#.#', '.....', '#.#.#'], 0, 0, PAL.paper);
   return c.toDataURL();
 }
 
