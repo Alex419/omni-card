@@ -1,0 +1,1179 @@
+<title>Omni Card Table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+/* Layout: seated first-person view. Toolbar on top, a tilted, resizable felt table in the middle,
+   up to 7 friends seated around the left, far and right edges (the table hides their laps),
+   your hand docked flat at the bottom, sticky-note pad bottom-left.
+   Single deliberate look: dark 8-bit arcade palette, no light theme. */
+@property --r { syntax:'<angle>'; inherits:false; initial-value:0deg; }
+:root{
+  --night:#0e1325; --ink:#1d2b53; --ink-2:#29366f; --paper:#fff1e8; --grey:#c2c3c7;
+  --red:#ff004d; --gold:#ffec27; --orange:#ffa300; --sky:#29adff; --lilac:#83769c; --green:#00e436; --pink:#ff77a8;
+  --font-pixel:"Press Start 2P", ui-monospace, "Courier New", monospace;
+  --font-term:"VT323", ui-monospace, "Courier New", monospace;
+  --handH:110px;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--night);color:var(--paper);font-family:var(--font-term);font-size:20px;overflow:hidden;-webkit-user-select:none;user-select:none}
+#app{position:relative;height:100%;display:flex;flex-direction:column}
+#app::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:100;
+  background:repeating-linear-gradient(to bottom,transparent 0 2px,rgba(0,0,0,.13) 2px 3px)}
+.px{box-shadow:0 -3px 0 0 #000,0 3px 0 0 #000,-3px 0 0 0 #000,3px 0 0 0 #000}
+
+/* toolbar */
+.bar{display:flex;align-items:center;gap:16px;padding-block:8px;padding-inline:16px;background:var(--ink);border-bottom:4px solid #000;position:relative;z-index:40}
+.brand{font-family:var(--font-pixel);font-size:14px;color:var(--gold);white-space:nowrap;text-shadow:3px 3px 0 var(--red)}
+.brand span{color:var(--paper);margin-left:6px;text-shadow:3px 3px 0 var(--sky)}
+.tools{display:flex;gap:8px;align-items:center;overflow-x:auto;padding:6px 4px;flex:1;min-width:0;scrollbar-width:none}
+.tools::-webkit-scrollbar{display:none}
+.btn{font-family:var(--font-pixel);font-size:9px;line-height:1;color:var(--paper);background:var(--ink-2);border:0;padding:9px 10px 8px;margin:3px;cursor:pointer;white-space:nowrap;
+  box-shadow:0 -3px 0 0 #000,0 3px 0 0 #000,-3px 0 0 0 #000,3px 0 0 0 #000,inset -3px -3px 0 0 rgba(0,0,0,.35),inset 3px 3px 0 0 rgba(255,255,255,.16)}
+.btn:hover{background:#3b4a8a}
+.btn:active{transform:translateY(2px);box-shadow:0 -3px 0 0 #000,0 3px 0 0 #000,-3px 0 0 0 #000,3px 0 0 0 #000,inset 3px 3px 0 0 rgba(0,0,0,.35)}
+.btn:focus-visible,.seg button:focus-visible,#pop input:focus-visible,.pad:focus-visible,.hint button:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
+.btn.on{background:var(--orange);color:#000}
+.btn.danger{background:#7e2553}
+.btn.hilite{background:#7e2553}
+.btn.sq{padding:9px 8px 8px}
+.deal{display:flex;align-items:center;gap:2px}
+.sep{width:4px;height:22px;background:#000;flex:none;margin-inline:4px}
+
+/* scene + table */
+#scene{position:relative;flex:1;overflow:hidden;touch-action:none;background:radial-gradient(ellipse 70% 60% at 50% 42%,#26325e 0%,#141b38 55%,var(--night) 100%)}
+#plane{position:absolute;width:1000px;height:640px;transform-origin:50% 50%;background-size:64px 32px;image-rendering:pixelated;--cw:75px;--ch:105px;
+  box-shadow:0 20px 0 0 #4a2414,0 26px 0 0 #000}
+#felt{position:absolute;inset:26px;background-size:32px 32px;image-rendering:pixelated;box-shadow:inset 0 0 0 4px #003d24,inset 0 10px 0 4px rgba(0,0,0,.22)}
+.felt-mark{position:absolute;left:50%;transform:translate(-50%,-50%);font-family:var(--font-pixel);font-size:30px;color:rgba(0,0,0,.2);white-space:nowrap;pointer-events:none}
+#layer{position:absolute;inset:0}
+.placing #felt{cursor:crosshair;box-shadow:inset 0 0 0 6px var(--gold)}
+.grip{position:absolute;width:30px;height:30px;cursor:nesw-resize;z-index:30;
+  background:repeating-linear-gradient(135deg,var(--gold) 0 4px,#000 4px 8px);box-shadow:0 0 0 4px #000}
+.grip:hover{background:repeating-linear-gradient(135deg,var(--orange) 0 4px,#000 4px 8px)}
+
+.card{position:absolute;width:var(--cw);height:var(--ch);background-size:100% 100%;image-rendering:pixelated;background-repeat:no-repeat}
+.tc{transform:translate(-50%,-50%) rotate(var(--r,0deg));filter:drop-shadow(0 4px 0 rgba(0,0,0,.35))}
+.tc.tsel{filter:drop-shadow(4px 0 0 var(--gold)) drop-shadow(-4px 0 0 var(--gold)) drop-shadow(0 -4px 0 var(--gold)) drop-shadow(0 4px 0 var(--gold)) drop-shadow(0 6px 0 rgba(0,0,0,.35))}
+.moving{pointer-events:none}
+.tidying{transition:left .26s steps(4),top .26s steps(4),--r .26s steps(4)}
+[data-card]{cursor:grab}
+.lifted{opacity:.22}
+.pop{animation:pop .24s steps(3)}
+@keyframes pop{from{scale:1.3}to{scale:1}}
+#mq{position:absolute;z-index:8;pointer-events:none;outline:3px dashed var(--gold);background:rgba(255,236,39,.1)}
+
+.zone{position:absolute;transform:translate(-50%,-50%);outline:4px dashed rgba(255,241,232,.42);outline-offset:-4px;background:rgba(0,0,0,.15)}
+.zone.pile{outline-color:rgba(255,241,232,.1);background:rgba(0,0,0,.05)}
+.zone.pile:hover{outline-color:rgba(255,241,232,.32)}
+.zone.tsel{outline:4px solid var(--gold);background:rgba(255,236,39,.12)}
+.zone.hot{outline-color:var(--gold);background:rgba(255,236,39,.16);animation:blink .5s steps(2) infinite}
+@keyframes blink{50%{outline-color:var(--orange)}}
+.zone.shuffling{animation:jig .4s steps(4)}
+@keyframes jig{25%{translate:-6px 0}50%{translate:6px -3px}75%{translate:-4px 2px}}
+.ztab{position:absolute;left:0;bottom:100%;margin-bottom:8px;display:flex;gap:8px;align-items:center;font-family:var(--font-pixel);font-size:11px;background:var(--ink);padding:6px 6px 6px 8px;cursor:move;white-space:nowrap;z-index:20;
+  box-shadow:0 -3px 0 0 #000,0 3px 0 0 #000,-3px 0 0 0 #000,3px 0 0 0 #000}
+.zone.tsel .ztab{background:#5a4d00}
+.zone.pile .ztab{margin-bottom:22px}
+.zface{color:var(--gold)}
+.zface.dn{color:var(--sky)}
+.zdeck{color:var(--red)}
+.zset{font-family:var(--font-pixel);font-size:9px;background:var(--lilac);color:#000;border:0;padding:4px 5px;cursor:pointer}
+.zset.tidy{background:var(--green)}
+.count{position:absolute;right:-10px;bottom:-10px;font-family:var(--font-pixel);font-size:11px;background:var(--red);color:var(--paper);padding:5px 6px;z-index:15;box-shadow:0 3px 0 #000}
+.zempty{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--font-pixel);font-size:10px;line-height:1.6;color:rgba(255,241,232,.45);text-align:center;pointer-events:none}
+
+.fan{position:absolute}
+.fan.hot{outline:4px dashed var(--gold);outline-offset:8px}
+.fc{position:absolute;filter:drop-shadow(0 3px 0 rgba(0,0,0,.35))}
+
+/* friends around the table (layer sits under the table, so the table hides their laps) */
+#seats{position:absolute;inset:0;pointer-events:none}
+.seat{position:absolute;pointer-events:auto;transform:translate(-50%,-100%) scale(var(--k,1));transform-origin:50% 100%;display:flex;flex-direction:column;align-items:center}
+.body{position:relative;width:80px;height:110px;animation:bob 1.4s steps(2) infinite;animation-delay:var(--bd,0s)}
+@keyframes bob{50%{translate:0 -3px}}
+.sprite{position:absolute;inset:0;background-size:300% 100%;image-rendering:pixelated;animation:eyes var(--ed,4.2s) steps(1,end) infinite;animation-delay:var(--bd,0s)}
+@keyframes eyes{0%{background-position:0 0}92%{background-position:50% 0}96%{background-position:0 0}}
+.sprite.shock{animation:none;background-position:100% 0}
+.seat.shook .body{animation:shake .34s steps(4)}
+@keyframes shake{25%{translate:-5px 0}50%{translate:5px -2px}75%{translate:-3px 0}}
+.plate{font-family:var(--font-pixel);font-size:10px;background:var(--ink);padding:6px 7px 5px;margin-bottom:8px;white-space:nowrap;box-shadow:0 -3px 0 0 #000,0 3px 0 0 #000,-3px 0 0 0 #000,3px 0 0 0 #000}
+.plate b{color:var(--gold);font-weight:400}
+.seat.hot .plate{background:var(--gold);color:#000}
+.seat.hot .plate b{color:var(--red)}
+.say{position:relative;font-family:var(--font-pixel);font-size:9px;background:var(--paper);color:var(--ink);padding:7px 8px 6px;margin-bottom:12px;white-space:nowrap;
+  box-shadow:0 -3px 0 0 #000,0 3px 0 0 #000,-3px 0 0 0 #000,3px 0 0 0 #000;animation:pop .24s steps(3)}
+.say::after{content:"";position:absolute;left:50%;top:100%;width:6px;height:9px;margin-left:-3px;background:var(--paper);box-shadow:-3px 0 0 #000,3px 0 0 #000,0 3px 0 #000}
+
+/* sticky notes */
+.note{position:absolute;width:54px;min-height:46px;box-sizing:border-box;padding:8px 4px 5px;transform:translate(-50%,-50%) rotate(var(--nr,0deg));
+  background:var(--nc);color:var(--ink);font-family:var(--font-term);font-size:15px;line-height:.85;text-align:center;overflow-wrap:anywhere;cursor:grab;
+  box-shadow:2px 3px 0 rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:2}
+.note::before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:rgba(0,0,0,.15)}
+.note::after{content:"";position:absolute;right:0;bottom:0;width:8px;height:8px;background:linear-gradient(-45deg,var(--night) 50%,rgba(0,0,0,.25) 50%)}
+.note.tn{width:112px;min-height:98px;font-size:28px;padding:14px 8px 8px}
+.note.tn.tsel{outline:4px solid var(--gold);outline-offset:3px}
+.note.mn{position:relative;transform:rotate(var(--nr,0deg));flex:none}
+.note.gn{transform:translate(-50%,-50%) rotate(-6deg) scale(1.35);box-shadow:8px 12px 0 rgba(0,0,0,.4)}
+.n-yel{--nc:#ffec27}.n-pink{--nc:#ff77a8}.n-blue{--nc:#29adff}.n-green{--nc:#00e436}
+.pad{position:absolute;left:16px;bottom:54px;z-index:7;width:74px;height:66px;border:0;padding:0;background:none;cursor:pointer}
+.pad.ready{cursor:grab}
+.padstack{position:absolute;inset:7px 0 0 7px;background:#8b7d10;box-shadow:inset 0 3px 0 #c9b800,inset 0 6px 0 #8b7d10,inset 0 9px 0 #c9b800,3px 4px 0 rgba(0,0,0,.45)}
+.padtop{position:absolute;inset:0 7px 7px 0;display:flex;align-items:center;justify-content:center;text-align:center;box-sizing:border-box;
+  font-family:var(--font-term);font-size:17px;line-height:.85;color:var(--ink);background:var(--nc);padding:7px 4px 4px;overflow-wrap:anywhere}
+.padtop::before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:rgba(0,0,0,.15)}
+.pad:not(.ready) .padtop{font-family:var(--font-pixel);font-size:8px;line-height:1.5}
+.pad.ready .padtop{animation:wig 1.4s steps(2) infinite}
+@keyframes wig{50%{rotate:-4deg}}
+.menotes{position:absolute;left:104px;bottom:54px;z-index:7;display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;max-width:min(360px,calc(100% - 120px))}
+.menotes .label{flex-basis:100%;font-family:var(--font-pixel);font-size:8px;color:var(--pink);text-shadow:2px 2px 0 #000}
+
+/* your hand */
+#hand{position:absolute;left:0;right:0;bottom:0;height:var(--handH);z-index:5}
+#hand.hot::before{content:"";position:absolute;inset:-30px 0 0;background:linear-gradient(to top,rgba(255,236,39,.22),transparent)}
+.hc{transform:translateY(var(--lift,0px)) rotate(var(--r,0deg));transform-origin:50% 130%;transition:transform .12s steps(3);
+  filter:drop-shadow(0 6px 0 rgba(0,0,0,.4))}
+.hc:hover{--lift:-14px}
+.hc.sel{--lift:-34px;filter:drop-shadow(3px 0 0 var(--gold)) drop-shadow(-3px 0 0 var(--gold)) drop-shadow(0 -3px 0 var(--gold)) drop-shadow(0 6px 0 rgba(0,0,0,.4))}
+.hand-empty{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);font-family:var(--font-pixel);font-size:10px;color:rgba(255,241,232,.55);padding:12px 14px;outline:4px dashed rgba(255,241,232,.28);white-space:nowrap}
+.me{position:absolute;left:16px;bottom:12px;z-index:6;font-family:var(--font-pixel);font-size:10px;background:var(--ink);padding:6px 7px 5px;pointer-events:none;box-shadow:0 -3px 0 0 #000,0 3px 0 0 #000,-3px 0 0 0 #000,3px 0 0 0 #000}
+.me b{color:var(--gold);font-weight:400}
+
+.hint{position:absolute;left:16px;top:10px;z-index:9;font-size:19px;line-height:1.05;color:var(--grey);max-width:min(340px,42%);text-shadow:2px 2px 0 #000;background:rgba(14,19,37,.82);padding:8px 10px 8px;box-shadow:0 0 0 3px #000}
+.hint em{font-style:normal;color:var(--gold)}
+.hint button{float:right;margin:0 0 4px 8px;font-family:var(--font-pixel);font-size:8px;background:var(--ink-2);color:var(--paper);border:0;padding:5px 6px;cursor:pointer}
+
+#selbar{position:absolute;right:16px;bottom:calc(var(--handH) + 20px);z-index:12;display:flex;align-items:center;gap:6px;font-family:var(--font-pixel);font-size:9px;background:#5a4d00;color:var(--gold);padding:6px 6px 6px 10px;
+  box-shadow:0 -3px 0 0 #000,0 3px 0 0 #000,-3px 0 0 0 #000,3px 0 0 0 #000}
+#selbar .btn{font-size:8px;padding:7px 7px 6px}
+
+#ghost{position:fixed;left:0;top:0;pointer-events:none;z-index:60}
+.gc{position:absolute;filter:drop-shadow(8px 12px 0 rgba(0,0,0,.4))}
+
+#toast{position:absolute;left:50%;bottom:calc(var(--handH) + 22px);transform:translateX(-50%);font-family:var(--font-pixel);font-size:10px;line-height:1.4;background:var(--gold);color:#000;padding:10px 12px 9px;z-index:20;opacity:0;pointer-events:none;white-space:nowrap;
+  box-shadow:0 -3px 0 0 #000,0 3px 0 0 #000,-3px 0 0 0 #000,3px 0 0 0 #000}
+#toast.show{opacity:1}
+
+/* panels */
+.panel{background:var(--ink);font-family:var(--font-pixel);font-size:10px;padding:14px;box-shadow:0 -4px 0 0 #000,0 4px 0 0 #000,-4px 0 0 0 #000,4px 0 0 0 #000,8px 8px 0 0 rgba(0,0,0,.45)}
+#score{position:absolute;right:16px;top:14px;z-index:30;display:grid;gap:9px;min-width:0;max-width:calc(100% - 32px);max-height:calc(100% - 40px);overflow-y:auto}
+.shead{display:flex;justify-content:space-between;align-items:center;color:var(--gold);gap:16px}
+.srow{display:grid;grid-template-columns:20px 5.5em 3em repeat(3,auto);align-items:center;gap:6px}
+.srow .sprite{position:static;width:20px;height:27px;animation:none;background-position:0 0}
+.sval{text-align:right;color:var(--gold);font-variant-numeric:tabular-nums}
+.srow button,.shead button{font-family:var(--font-pixel);font-size:8px;background:var(--ink-2);color:var(--paper);border:0;padding:6px 5px;cursor:pointer;box-shadow:0 2px 0 #000}
+.srow button:hover{background:var(--lilac);color:#000}
+#pop{position:fixed;z-index:70;display:grid;gap:12px;width:min(310px,calc(100vw - 32px));max-height:calc(100vh - 24px);overflow-y:auto;box-sizing:border-box}
+.prow{display:grid;gap:7px}
+.prow>span,.prow>label{color:var(--grey);font-size:8px;line-height:1.5}
+.ptitle{color:var(--gold);font-size:10px}
+#pop input{font-family:var(--font-pixel);font-size:11px;background:#000;color:var(--paper);border:0;padding:8px;width:100%;box-sizing:border-box;text-transform:uppercase}
+#pop input::placeholder{color:#5f574f}
+.seg{display:flex;gap:6px}
+.seg button{flex:1;font-family:var(--font-pixel);font-size:9px;border:0;padding:8px 4px;cursor:pointer;background:#000;color:var(--grey)}
+.seg button[aria-pressed="true"]{background:var(--gold);color:#000}
+.seg .sw{height:26px;background:var(--nc);box-shadow:inset 0 0 0 3px #000}
+.seg .sw[aria-pressed="true"]{box-shadow:inset 0 0 0 3px #000,0 0 0 3px var(--paper)}
+.step{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center}
+.step b{text-align:center;font-weight:400;font-size:14px;color:var(--gold);background:#000;padding:7px 0 6px}
+.step button{font-family:var(--font-pixel);font-size:11px;border:0;width:38px;padding:7px 0 6px;cursor:pointer;background:var(--ink-2);color:var(--paper);box-shadow:0 3px 0 #000}
+.step button:disabled{opacity:.35;cursor:default}
+.backs{display:flex;gap:4px}
+.backs i{width:18px;height:25px;background-size:100% 100%;image-rendering:pixelated}
+.pacts{display:flex;flex-wrap:wrap;gap:4px}
+.pacts .btn{font-size:8px}
+
+@media (max-width:640px){
+  .brand{font-size:11px}
+  .hint{font-size:16px;max-width:56%}
+  .ztab{font-size:13px}
+}
+@media (prefers-reduced-motion:reduce){
+  .body,.sprite,.zone.hot,.pop,.zone.shuffling,.pad.ready .padtop,.say,.seat.shook .body{animation:none}
+  .hc,.tidying{transition:none}
+}
+</style>
+
+<div id="app">
+  <header class="bar">
+    <div class="brand">OMNI<span>CARD</span></div>
+    <div class="tools" role="toolbar" aria-label="Table tools">
+      <button class="btn hilite" id="bTable" title="Players, decks, card size and table size">TABLE</button>
+      <button class="btn" id="bZone" title="Place a new card zone on the table">+ ZONE</button>
+      <div class="deal">
+        <button class="btn sq" id="bLess" aria-label="Deal fewer">-</button>
+        <button class="btn" id="bDeal" title="Deal from the deck to every seat">DEAL 5</button>
+        <button class="btn sq" id="bMore" aria-label="Deal more">+</button>
+      </div>
+      <button class="btn" id="bShuf">SHUFFLE</button>
+      <button class="btn" id="bCollect" title="Gather every card back into the deck">COLLECT</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="btn" id="bUndo" title="Undo (Ctrl+Z)">UNDO</button>
+      <button class="btn" id="bScore">SCORE</button>
+      <button class="btn" id="bHelp">HELP</button>
+      <button class="btn" id="bSnd" aria-pressed="true">SND ON</button>
+    </div>
+  </header>
+  <main id="scene">
+    <div id="seats"></div>
+    <div id="plane" class="wood">
+      <div id="felt" class="felt" data-drop="table"></div>
+      <div class="felt-mark" id="fmark">OMNI CARD</div>
+      <div id="layer"></div>
+    </div>
+    <div class="hint" id="hint"><button id="hintX" aria-label="Hide tips">X</button>
+      <em>DRAG</em> cards anywhere. <em>CLICK</em> a table card to flip it. <em>DRAG ON EMPTY FELT</em> to box-select, then move the whole group. <em>SHIFT+CLICK</em> adds to it.
+      <em>TABLE</em> sets players, decks and card size; drag the striped corner to resize the table.</div>
+    <div id="hand" data-drop="hand"></div>
+    <button class="pad" id="pad" aria-label="Sticky note pad"></button>
+    <div class="menotes" id="menotes"></div>
+    <div class="me" id="me"></div>
+    <div id="selbar" hidden></div>
+    <div id="mq" hidden></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <div id="score" class="panel" hidden></div>
+  </main>
+  <div id="pop" class="panel" hidden></div>
+  <div id="ghost"></div>
+</div>
+
+<script>
+(() => {
+"use strict";
+let W = 1000, H = 640, CW = 75, CH = 105;
+const TILT = 40, RAD = TILT * Math.PI / 180;
+const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'], SUITS = ['S','H','D','C'];
+const RED = { H: 1, D: 1 };
+const PAL = { night:'#0e1325', ink:'#1d2b53', paper:'#fff1e8', shade:'#c2c3c7', red:'#ff004d', purple:'#7e2553', gold:'#ffec27',
+  peach:'#ffccaa', felt:'#008751', feltD:'#00663d', feltL:'#00a05f', wood:'#ab5236', woodD:'#7a3a24', woodL:'#c4693f', mist:'#e4e2ec', pink:'#ff77a8' };
+const SIZES = { S:[60,84,.85], M:[75,105,1], L:[90,126,1.15] };
+const BACKS = [ // base, border, pattern, emblem
+  ['#1d2b53','#ff004d','#7e2553','#ffec27'], ['#7e2553','#ffec27','#ff77a8','#fff1e8'],
+  ['#ab5236','#fff1e8','#ffa300','#1d2b53'], ['#5f574f','#29adff','#83769c','#ffec27'] ];
+const NCOLS = ['yel', 'pink', 'blue', 'green'];
+const QUIPS = ['HEY!', 'REALLY?', 'WHAT DOES IT SAY?', 'NOT COOL', 'LOL OK', 'I SAW THAT', 'RUDE!'];
+const REVENGE = ['NO U', 'SLOWPOKE', 'CARD SHARK', 'KICK ME', 'BIG BLUFFER', 'I SAW YOUR HAND', 'HURRY UP', 'SORE LOSER'];
+
+const BOTS = [
+  { id:'p1', name:'MAYA', look:{h:'#7e2553',s:'#ffccaa',c:'#29adff',x:['long']} },
+  { id:'p2', name:'DEV',  look:{h:'#1d2b53',s:'#ab5236',c:'#ffa300',x:['cap','glasses'],cap:'#ff004d'} },
+  { id:'p3', name:'RIO',  look:{h:'#ffa300',s:'#ffccaa',c:'#00e436',x:['spiky']} },
+  { id:'p4', name:'JUNE', look:{h:'#5f574f',s:'#e8b087',c:'#ff77a8',x:['bun']} },
+  { id:'p5', name:'OTTO', look:{h:'#ab5236',s:'#ffccaa',c:'#83769c',x:['beanie'],cap:'#29adff'} },
+  { id:'p6', name:'PIA',  look:{h:'#ffec27',s:'#c98a62',c:'#7e2553',x:['long','band'],cap:'#ff77a8'} },
+  { id:'p7', name:'KAI',  look:{h:'#1d2b53',s:'#7a4a2a',c:'#ffec27',x:['beard']} },
+];
+const ME = { id:'me', name:'YOU', look:{h:'#5f574f',s:'#ffccaa',c:'#ff004d',x:[]} };
+const NAME = Object.fromEntries([ME, ...BOTS].map(p => [p.id, p.name]));
+// where friends sit, clockwise from your left: L = left edge, T = far edge, R = right edge; f = fraction along that edge
+const LAYOUTS = {
+  1:[['T',.5]], 2:[['L',.5],['R',.5]], 3:[['L',.5],['T',.5],['R',.5]],
+  4:[['L',.5],['T',.3],['T',.7],['R',.5]], 5:[['L',.5],['T',.22],['T',.5],['T',.78],['R',.5]],
+  6:[['L',.7],['L',.3],['T',.3],['T',.7],['R',.3],['R',.7]], 7:[['L',.7],['L',.3],['T',.22],['T',.5],['T',.78],['R',.3],['R',.7]] };
+
+/* ---------- pixel art ---------- */
+const GLY = {A:['010','101','111','101','101'],'2':['111','001','111','100','111'],'3':['111','001','011','001','111'],'4':['101','101','111','001','001'],
+  '5':['111','100','111','001','111'],'6':['111','100','111','101','111'],'7':['111','001','001','010','010'],'8':['111','101','111','101','111'],
+  '9':['111','101','111','001','111'],'1':['010','110','010','010','111'],'0':['111','101','101','101','111'],J:['001','001','001','101','111'],
+  Q:['010','101','101','110','011'],K:['101','101','110','101','101']};
+const SM = { S:['00100','01110','11111','00100','01110'], H:['01010','11111','11111','01110','00100'],
+  D:['00100','01110','11111','01110','00100'], C:['01110','01110','11011','11111','00100'], X:['00100','11111','01110','01010','10001'] };
+const BIG = {
+  H:['.##...##.','####.####','#########','#########','.#######.','..#####..','...###...','....#....'],
+  D:['....#....','...###...','..#####..','.#######.','#########','.#######.','..#####..','...###...','....#....'],
+  S:['....#....','...###...','..#####..','.#######.','#########','#########','.##.#.##.','....#....','...###...'],
+  C:['...###...','..#####..','...###...','.##.#.##.','#########','#########','.##.#.##.','....#....','...###...'],
+  X:['....#....','....#....','...###...','#########','.#######.','..#####..','..##.##..','.##...##.','##.....##'] };
+const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+function blit(x, rows, ox, oy, col, sc = 1) {
+  x.fillStyle = col;
+  rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] === '1' || r[i] === '#') x.fillRect(ox + i*sc, oy + j*sc, sc, sc); });
+}
+function rank(x, rk, ox, oy, col, sc = 1) {
+  if (rk === '10') { blit(x, GLY['1'], ox, oy, col, sc); blit(x, GLY['0'], ox + 3*sc, oy, col, sc); }
+  else blit(x, GLY[rk], ox, oy, col, sc);
+}
+function frame(x, fill, line) {
+  x.fillStyle = line; x.fillRect(1,0,23,1); x.fillRect(1,34,23,1); x.fillRect(0,1,1,33); x.fillRect(24,1,1,33);
+  x.fillStyle = fill; x.fillRect(1,1,23,33);
+}
+function faceURL(rk, su) {
+  const c = cv(25,35), x = c.getContext('2d'), joker = su === 'X', col = (RED[su] || rk === 'R') ? PAL.red : PAL.ink;
+  frame(x, PAL.paper, PAL.night);
+  x.fillStyle = PAL.shade; x.fillRect(2,33,21,1); x.fillRect(23,2,1,31);
+  const corner = () => { if (joker) { blit(x, GLY.J, 2, 2, col); blit(x, SM.X, 1, 8, col); } else { rank(x, rk, 2, 2, col); blit(x, SM[su], 2, 8, col); } };
+  corner(); x.save(); x.translate(25,35); x.rotate(Math.PI); corner(); x.restore();
+  if (joker) {
+    x.fillStyle = rk === 'R' ? PAL.peach : PAL.mist; x.fillRect(6,8,13,19);
+    blit(x, BIG.X, 8, 11, col); x.fillStyle = PAL.gold; x.fillRect(12,13,1,1); x.fillStyle = col; x.fillRect(8,22,9,1);
+  } else if ('JQK'.includes(rk)) {
+    x.fillStyle = RED[su] ? PAL.peach : PAL.mist; x.fillRect(6,8,13,19);
+    x.fillStyle = col; x.fillRect(6,8,13,1); x.fillRect(6,26,13,1); x.fillRect(6,8,1,19); x.fillRect(18,8,1,19);
+    rank(x, rk, 9, 10, col, 2); blit(x, SM[su], 10, 21, col);
+  } else blit(x, BIG[su], 8, 13, col);
+  return c.toDataURL();
+}
+function backURL([base, border, pat, emb]) {
+  const c = cv(25,35), x = c.getContext('2d');
+  frame(x, base, PAL.night);
+  x.fillStyle = border; x.fillRect(2,2,21,1); x.fillRect(2,32,21,1); x.fillRect(2,2,1,31); x.fillRect(22,2,1,31);
+  x.fillStyle = pat;
+  for (let j = 4; j <= 30; j++) for (let i = 4; i <= 20; i++) if ((i + j) % 4 === 0 || (i - j + 40) % 4 === 0) x.fillRect(i, j, 1, 1);
+  x.fillStyle = base; x.fillRect(8,13,9,9);
+  blit(x, ['0001000','0011100','0111110','1111111','0111110','0011100','0001000'], 9, 14, emb);
+  x.fillStyle = border; x.fillRect(12,17,1,1);
+  return c.toDataURL();
+}
+function tileURL(w, h, base, dots) {
+  const c = cv(w, h), x = c.getContext('2d'); x.fillStyle = base; x.fillRect(0,0,w,h);
+  dots.forEach(([col, pts]) => { x.fillStyle = col; pts.forEach(([a,b,ww=1,hh=1]) => x.fillRect(a,b,ww,hh)); });
+  return c.toDataURL();
+}
+function shadeHex(hex, f) {
+  const n = parseInt(hex.slice(1), 16), ch = s => Math.round(((n >> s) & 255) * f);
+  return '#' + [16, 8, 0].map(s => ch(s).toString(16).padStart(2, '0')).join('');
+}
+const BODY = [
+'....hhhhhhhh....','...hhhhhhhhhh...','..hhhhhhhhhhhh..','..hhsssssssshh..','..hssssssssssh..','..sswesssswess..',
+'..ssssssssssss..','..ssssskssssss..','..ssssmmmmssss..','...ssssssssss...','....ssssssss....','......nnnn......',
+'...cccccccccc...','..cccccccccccc..','.cccccccccccccc.','dccccccccccccccd','dccccccccccccccd','dccccccccccccccd',
+'dccccccccccccccd','sccccccccccccccs','ss.cccccccccc.ss','...cccccccccc...'];
+// three frames side by side: normal, blink, shocked
+function personURL(l) {
+  const c = cv(48, 22), x = c.getContext('2d');
+  const map = { h:l.h, s:l.s, k:shadeHex(l.s, .78), n:shadeHex(l.s, .85), w:PAL.paper, e:PAL.night, m:PAL.purple, c:l.c, d:shadeHex(l.c, .7) };
+  const px = (a, b, col, w = 1, h = 1) => { x.fillStyle = col; x.fillRect(a, b, w, h); };
+  for (let f = 0; f < 3; f++) {
+    x.save(); x.translate(f * 16, 0);
+    BODY.forEach((r, j) => { for (let i = 0; i < 16; i++) if (map[r[i]]) px(i, j, map[r[i]]); });
+    if (f === 1) { px(4,5,map.k,2); px(10,5,map.k,2); }
+    if (f === 2) {
+      px(4,4,PAL.paper,2,2); px(10,4,PAL.paper,2,2); px(5,5,PAL.night); px(10,5,PAL.night);
+      px(6,8,l.s,4); px(7,8,PAL.night,2,2); px(3,7,PAL.pink); px(12,7,PAL.pink);
+    }
+    const xs = l.x || [];
+    if (xs.includes('long')) { px(1,3,l.h,1,11); px(14,3,l.h,1,11); px(2,9,l.h,1,4); px(13,9,l.h,1,4); }
+    if (xs.includes('spiky')) { x.clearRect(0,0,16,1); [3,5,7,9,11].forEach(a => px(a,0,l.h)); px(1,1,l.h); px(14,1,l.h); px(2,2,l.h); px(13,2,l.h); }
+    if (xs.includes('bun')) { x.clearRect(0,0,16,1); px(6,0,l.h,4,1); px(5,1,shadeHex(l.h,.75),6,1); }
+    if (xs.includes('cap')) { px(3,0,l.cap,10,3); px(3,3,l.cap,12,1); px(6,1,PAL.paper,2,1); }
+    if (xs.includes('beanie')) { px(3,0,l.cap,10,2); px(2,2,l.cap,12,2); px(2,3,shadeHex(l.cap,.7),12,1); px(7,0,PAL.paper,2,1); }
+    if (xs.includes('band')) { px(2,3,l.cap,12,1); }
+    if (xs.includes('beard')) { px(2,8,l.h,4,1); px(10,8,l.h,4,1); px(3,9,l.h,10,1); px(4,10,l.h,8,1); }
+    if (xs.includes('glasses')) { const g = PAL.night; [3,9].forEach(a => { px(a,4,g,4); px(a,6,g,4); px(a,4,g,1,3); px(a+3,4,g,1,3); }); px(7,5,g,2); }
+    x.restore();
+  }
+  return c.toDataURL();
+}
+(function sheet() {
+  let css = '';
+  for (const s of SUITS) for (const r of RANKS) css += `.c-${r}${s}{background-image:url(${faceURL(r, s)})}`;
+  css += `.c-JR{background-image:url(${faceURL('R','X')})}.c-JB{background-image:url(${faceURL('B','X')})}`;
+  BACKS.forEach((b, i) => css += `.c-b${i}{background-image:url(${backURL(b)})}`);
+  css += `.felt{background-image:url(${tileURL(8,8,PAL.felt,[[PAL.feltD,[[1,1],[5,3],[3,6],[7,7]]],[PAL.feltL,[[6,1],[2,4]]]])})}`;
+  css += `.wood{background-image:url(${tileURL(16,8,PAL.wood,[[PAL.woodD,[[0,3,16,1],[0,7,16,1],[11,0,1,3],[4,4,1,3]]],[PAL.woodL,[[2,1],[9,5],[13,1],[6,5]]]])})}`;
+  [ME, ...BOTS].forEach(p => css += `.av-${p.id}{background-image:url(${personURL(p.look)})}`);
+  const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+})();
+
+/* ---------- state ---------- */
+const $ = id => document.getElementById(id);
+const scene = $('scene'), plane = $('plane'), layer = $('layer'), seatsEl = $('seats'), handEl = $('hand'), padEl = $('pad'),
+  menotesEl = $('menotes'), ghost = $('ghost'), toastEl = $('toast'), pop = $('pop'), scoreEl = $('score'), meEl = $('me'),
+  selbar = $('selbar'), mqEl = $('mq'), hintEl = $('hint');
+let S, hist = [], sel = new Set(), tsel = new Set(), lastMoved = new Set(), dealN = 5, dealing = false, placing = false, popId = null, popMode = null;
+let drag = null, zdrag = null, gdrag = null, rdrag = null, mq = null, hotKey = null, handCenters = [], compColor = 'yel', lastNote = null, revengePending = false;
+const R = {};  // live reactions per seat (not saved)
+const L = { s:1, Oy:0, Ox:0, px:0, py:0, P:1000, SW:0, SH:0, hs:3 };
+
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rnd = (a, b) => Math.round(a + Math.random() * (b - a));
+const pick = a => a[Math.random() * a.length | 0];
+const base = id => id.split('.')[0];
+const deckOf = id => +(id.split('.')[1] || 0) % BACKS.length;
+const faceCls = id => 'c-' + base(id);
+const backCls = id => 'c-b' + deckOf(id);
+const zone = id => S.zones.find(z => z.id === id);
+const deckZone = () => S.zones.find(z => z.deck);
+const jitter = (bx = 0, by = 0) => [Math.round(bx + rnd(-10, 10)), Math.round(by + rnd(-8, 8)), rnd(-24, 24)];
+const isMessy = z => z.layout === 'stack' && z.cards.length > 1 && z.cards.some(c => c.j && (c.j[0] || c.j[1] || c.j[2]));
+function allIds() {
+  const out = [];
+  for (let d = 0; d < S.cfg.decks; d++) {
+    for (const s of SUITS) for (const r of RANKS) out.push(`${r}${s}.${d}`);
+    if (S.cfg.jokers) out.push(`JR.${d}`, `JB.${d}`);
+  }
+  return out;
+}
+function activeSeats() {
+  const n = S.cfg.players - 1, lay = LAYOUTS[n] || [];
+  return BOTS.slice(0, n).map((b, i) => {
+    const [side, f] = lay[i], cnt = lay.filter(l => l[0] === side).length;
+    const fan = side === 'T' ? { x: f * W, y: 92, r: 180 } : side === 'L' ? { x: 92, y: f * H, r: 90 } : { x: W - 92, y: f * H, r: -90 };
+    const room = side === 'T' ? (W - 120) / cnt : (H - 140) / cnt;
+    return { ...b, side, f, fan, room };
+  });
+}
+function tableFor(players) { return players <= 4 ? [1000, 640] : players <= 6 ? [1120, 720] : [1240, 800]; }
+
+function fresh() {
+  S = { cfg: { players: 4, decks: 1, jokers: false, size: 'M', tw: 1000, th: 640 } };
+  const deck = shuffle(allIds());
+  Object.assign(S, {
+    zones: [
+      { id:'z1', name:'DECK', x:420, y:300, face:'down', layout:'stack', deck:true, mess:false, cards:[] },
+      { id:'z2', name:'DISCARD', x:580, y:300, face:'up', layout:'stack', mess:true, cards:[] },
+      { id:'z3', name:'MELD', x:500, y:478, face:'up', layout:'spread', w:330, mess:false, cards:[] },
+    ],
+    hands: Object.fromEntries([ME, ...BOTS].map(p => [p.id, []])), loose: [],
+    score: Object.fromEntries([ME, ...BOTS].map(p => [p.id, 0])), zn: 4,
+    notes: [{ id:'n1', text:'DEALER', color:'yel', r:-8, at:'p2', x:.5, y:.52 }], nn: 2, pad: null,
+  });
+  for (let i = 0; i < 5; i++) for (const p of ['p1','p2','p3','me']) S.hands[p].push(deck.pop());
+  for (let i = 0; i < 6; i++) S.zones[1].cards.push({ id: deck.pop(), f: true, j: jitter() });
+  for (let i = 0; i < 3; i++) S.zones[2].cards.push({ id: deck.pop(), f: true });
+  S.zones[0].cards = deck.map(id => ({ id, f: false }));
+  return S;
+}
+function applyCfg() { W = S.cfg.tw; H = S.cfg.th; const z = SIZES[S.cfg.size] || SIZES.M; CW = z[0]; CH = z[1]; }
+function pushUndo() { hist.push(JSON.stringify(S)); if (hist.length > 80) hist.shift(); }
+function undo() {
+  if (!hist.length) { toast('NOTHING TO UNDO'); SFX.err(); return; }
+  S = JSON.parse(hist.pop()); sel.clear(); tsel.clear(); closePop(); applyCfg(); layout(); render(); SFX.flip();
+}
+
+/* ---------- projection (must match the CSS transform) ---------- */
+function proj(u, v, s = L.s, Oy = L.Oy) {
+  const U = s * (u - W/2), V = s * (v - H/2);
+  const X = L.Ox + U, Y = Oy + V * Math.cos(RAD), Z = V * Math.sin(RAD), k = L.P / (L.P - Z);
+  return { x: L.px + (X - L.px) * k, y: L.py + (Y - L.py) * k, k };
+}
+function unproj(sx, sy) {
+  const V = L.P * ((sy - L.py) - (L.Oy - L.py)) / (L.P * Math.cos(RAD) + (sy - L.py) * Math.sin(RAD));
+  const k = L.P / (L.P - V * Math.sin(RAD));
+  const X = (sx - L.px) / k + L.px;
+  return { x: (X - L.Ox) / L.s + W/2, y: V / L.s + H/2 };
+}
+function fit() {
+  const r = scene.getBoundingClientRect();
+  L.SW = r.width; L.SH = r.height;
+  L.hs = (L.SW < 640 ? 2.2 : (L.SH < 620 ? 2.6 : 3.2)) * (SIZES[S.cfg.size] || SIZES.M)[2];
+  const handH = 35 * L.hs * 0.8;
+  document.documentElement.style.setProperty('--handH', handH + 'px');
+  L.Ox = L.SW / 2; L.px = L.SW / 2; L.py = L.SH * 0.22; L.P = Math.max(900, L.SH * 1.5);
+  const topPad = L.SW < 640 ? 100 : 136, botLim = L.SH - handH * 0.5, sideMax = L.SW - 20;
+  const sideNeed = L.SW >= 900 ? 110 : L.SW >= 700 ? 70 : 0;
+  let best = { s: 0.25, Oy: L.SH / 2 };
+  for (let s = 1.6; s > 0.15; s -= 0.01) {
+    const target = (topPad + botLim) / 2; let lo = -L.SH, hi = 2 * L.SH;
+    for (let i = 0; i < 32; i++) { const m = (lo + hi) / 2, c = (proj(W/2,0,s,m).y + proj(W/2,H,s,m).y) / 2; if (c < target) lo = m; else hi = m; }
+    const Oy = (lo + hi) / 2, top = proj(W/2,0,s,Oy).y, bot = proj(W/2,H,s,Oy).y, wN = proj(W,H,s,Oy).x - proj(0,H,s,Oy).x;
+    if (top >= topPad - 1 && bot <= botLim + 1 && wN <= sideMax && proj(0,H*.47,s,Oy).x >= sideNeed) { best = { s, Oy }; break; }
+  }
+  L.s = best.s; L.Oy = best.Oy;
+}
+function placePlane() {
+  scene.style.perspective = L.P + 'px';
+  scene.style.perspectiveOrigin = `${L.px}px ${L.py}px`;
+  plane.style.width = W + 'px'; plane.style.height = H + 'px';
+  plane.style.left = (L.Ox - W/2) + 'px'; plane.style.top = (L.Oy - H/2) + 'px';
+  plane.style.transform = `scale3d(${L.s},${L.s},${L.s}) rotateX(${TILT}deg)`;
+  plane.style.setProperty('--cw', CW + 'px'); plane.style.setProperty('--ch', CH + 'px');
+  $('fmark').style.top = Math.round(H * .3) + 'px';
+}
+function layout() { fit(); placePlane(); }
+
+/* ---------- rendering ---------- */
+const moving = key => gdrag && gdrag.moved && tsel.has(key);
+function cardHTML(id, f, from, x, y, r = 0, extra = '') {
+  const attrs = from ? ` data-card="${id}" data-from="${from}"` : '';
+  const k = 'c:' + id, cls = (from === 'loose' && tsel.has(k) ? ' tsel' : '') + (from === 'loose' && moving(k) ? ' moving' : '');
+  return `<div class="card tc ${f ? faceCls(id) : backCls(id)}${lastMoved.has(id) ? ' pop' : ''}${cls}"${attrs}${extra} style="left:${x}px;top:${y}px;--r:${r}deg"></div>`;
+}
+function noteHTML(n, cls, style) {
+  const k = 'n:' + n.id, sc = n.at === 'table' ? (tsel.has(k) ? ' tsel' : '') + (moving(k) ? ' moving' : '') : '';
+  return `<div class="note ${cls} n-${n.color}${n.id === lastNote ? ' pop' : ''}${sc}" data-note="${n.id}" style="${style}--nr:${n.r}deg"><span>${esc(n.text)}</span></div>`;
+}
+function zoneHTML(z) {
+  const spread = z.layout === 'spread', w = spread ? (z.w || 330) : CW + 22, h = CH + 22, n = z.cards.length, cx = 11 + CW/2, cy = 11 + CH/2;
+  const messy = isMessy(z), k = 'z:' + z.id;
+  let inner = '';
+  if (spread) {
+    const step = n > 1 ? Math.min(CW * 0.55, (w - 22 - CW) / (n - 1)) : 0;
+    z.cards.forEach((c, i) => inner += cardHTML(c.id, c.f, `zone:${z.id}`, cx + i * step, cy));
+  } else {
+    const show = z.cards.slice(messy ? -14 : -4);
+    show.forEach((c, i) => {
+      const depth = show.length - 1 - i, j = c.j || [0, 0, 0];
+      inner += cardHTML(c.id, c.f, depth === 0 ? `zone:${z.id}` : null, cx + j[0], cy + j[1] + (messy ? 0 : Math.min(depth, 3) * 2), j[2], ` data-depth="${depth}"`);
+    });
+    if (n > 1) inner += `<span class="count">${n}</span>`;
+  }
+  const empty = n ? '' : `<span class="zempty">${z.face === 'up' ? 'FACE<br>UP' : 'FACE<br>DOWN'}</span>`;
+  const tidy = messy ? `<button class="zset tidy" data-ztidy="${z.id}" aria-label="Straighten ${esc(z.name)}">TIDY</button>` : '';
+  return `<div class="zone${messy ? ' pile' : ''}${tsel.has(k) ? ' tsel' : ''}${moving(k) ? ' moving' : ''}" data-drop="zone:${z.id}" data-zone="${z.id}" style="left:${z.x}px;top:${z.y}px;width:${w}px;height:${h}px">
+    <div class="ztab" data-ztab="${z.id}">${z.deck ? '<span class="zdeck">&#9632;</span>' : ''}<span>${esc(z.name)}</span>
+    <span class="zface ${z.face === 'up' ? '' : 'dn'}">${z.face === 'up' ? 'UP' : 'DN'}</span>${tidy}
+    <button class="zset" data-zset="${z.id}" aria-label="Settings for ${esc(z.name)}">SET</button></div>${empty}${inner}</div>`;
+}
+function fanHTML(st) {
+  const ids = S.hands[st.id], n = ids.length, sc = clamp(st.room / 360, .55, .78), cw = CW * sc, ch = CH * sc, mid = (n - 1) / 2;
+  const step = n > 1 ? Math.min(cw * .26, Math.max(4, (st.room * .75 - cw) / (n - 1))) : 0;
+  let inner = '';
+  ids.forEach((id, i) => { const d = i - mid;
+    inner += `<i class="card fc ${backCls(id)}" style="left:${i * step}px;top:${d * d * .9}px;width:${cw}px;height:${ch}px;transform:rotate(${d * Math.min(4, 30 / n)}deg)"></i>`; });
+  const w = Math.max((n - 1) * step + cw, cw);
+  return `<div class="fan" data-drop="seat:${st.id}" style="left:${st.fan.x}px;top:${st.fan.y}px;width:${w}px;height:${ch + 20}px;transform:translate(-50%,-50%) rotate(${st.fan.r}deg)">${inner}</div>`;
+}
+function renderPlane() {
+  let h = activeSeats().map(fanHTML).join('');
+  h += S.zones.map(zoneHTML).join('');
+  h += S.loose.map(l => cardHTML(l.id, l.f, 'loose', l.x, l.y, l.r)).join('');
+  h += S.notes.filter(n => n.at === 'table').map(n => noteHTML(n, 'tn', `left:${n.x}px;top:${n.y}px;`)).join('');
+  h += `<div class="grip" data-grip title="Drag to resize the table" style="left:${W - 34}px;top:4px"></div>`;
+  layer.innerHTML = h;
+}
+function seatPos(st, crowd) {
+  const m = crowd ? .85 : 1;
+  if (st.side === 'T') { const p = proj(st.f * W, 0), k = clamp(p.k * L.s * 1.3 * m, .42, 1.35); return { x: p.x, y: p.y + 30 * k, k, depth: 0 }; }
+  const left = st.side === 'L', p = proj(left ? 0 : W, st.f * H), k = clamp(p.k * L.s * 1.35 * m, .42, 1.4), half = 40 * k;
+  const x = clamp(left ? p.x - half + 16 * k : p.x + half - 16 * k, half * .6, L.SW - half * .6);
+  return { x, y: p.y + 46 * k, k, depth: st.f };
+}
+function renderSeats() {
+  const seats = activeSeats(), crowd = seats.length > 5;
+  seatsEl.innerHTML = seats.map((st, i) => ({ st, i, g: seatPos(st, crowd) })).sort((a, b) => a.g.depth - b.g.depth).map(({ st, i, g }) => {
+    const r = R[st.id] || {};
+    const notes = S.notes.filter(n => n.at === st.id).map(n => noteHTML(n, '', `left:${n.x * 100}%;top:${n.y * 100}%;`)).join('');
+    return `<div class="seat${r.shock ? ' shook' : ''}" data-drop="seat:${st.id}" style="left:${g.x}px;top:${g.y}px;--k:${g.k};--bd:${-i * .37}s;--ed:${3.6 + (i % 4) * .5}s">
+      ${r.say ? `<div class="say">${r.say}</div>` : ''}<div class="plate">${st.name} <b>${S.hands[st.id].length}</b></div>
+      <div class="body"><div class="sprite av-${st.id}${r.shock ? ' shock' : ''}"></div>${notes}</div></div>`;
+  }).join('');
+}
+function renderHand() {
+  const ids = S.hands.me, n = ids.length, cw = 25 * L.hs, ch = 35 * L.hs, mid = (n - 1) / 2;
+  const step = n > 1 ? Math.min(cw * 0.62, (L.SW - 32 - cw) / (n - 1)) : 0, start = L.SW / 2 - ((n - 1) * step) / 2 - cw / 2;
+  handCenters = [];
+  let h = '';
+  ids.forEach((id, i) => { const d = i - mid, rot = d * Math.min(4, 26 / Math.max(n, 1)), x = start + i * step;
+    handCenters.push(x + cw / 2);
+    h += `<div class="card hc ${faceCls(id)}${sel.has(id) ? ' sel' : ''}${lastMoved.has(id) ? ' pop' : ''}" data-card="${id}" data-from="hand"
+      style="left:${x}px;bottom:${-ch * 0.26 - d * d * Math.min(1.4, 30 / (n * n || 1))}px;width:${cw}px;height:${ch}px;--r:${rot}deg;z-index:${i + 1}"></div>`; });
+  if (!n) h = '<div class="hand-empty">YOUR HAND: DRAG CARDS HERE</div>';
+  handEl.innerHTML = h;
+}
+function renderMe() {
+  meEl.innerHTML = `YOU <b>${S.hands.me.length}</b>`;
+  const mine = S.notes.filter(n => n.at === 'me');
+  menotesEl.innerHTML = mine.length ? '<span class="label">STUCK ON YOU (CLICK TO PEEL)</span>' + mine.map(n => noteHTML(n, 'mn', '')).join('') : '';
+  padEl.classList.toggle('ready', !!S.pad);
+  padEl.setAttribute('aria-label', S.pad ? `Sticky note ready: ${S.pad.text}. Drag it onto a friend.` : 'Sticky note pad: write a note');
+  padEl.innerHTML = `<span class="padstack"></span><span class="padtop n-${S.pad ? S.pad.color : compColor}">${S.pad ? esc(S.pad.text) : 'NOTE<br>PAD'}</span>`;
+}
+function renderSel() {
+  pruneSel();
+  const n = tsel.size, cards = [...tsel].filter(k => k[0] === 'c').length;
+  selbar.hidden = !n;
+  if (!n) return;
+  selbar.innerHTML = `${n} PICKED ${cards > 1 ? '<button class="btn" data-sb="pile">PILE UP</button>' : ''}${cards ? '<button class="btn" data-sb="flip">FLIP</button>' : ''}<button class="btn" data-sb="clear">CLEAR</button>`;
+}
+function renderScore() {
+  if (scoreEl.hidden) return;
+  scoreEl.innerHTML = `<div class="shead">SCORE PAD<button data-sc="close" aria-label="Close score pad">X</button></div>` +
+    [ME, ...activeSeats()].map(p => `<div class="srow"><span class="sprite av-${p.id}"></span><span>${p.name}</span><span class="sval">${S.score[p.id]}</span>
+      <button data-sc="${p.id}:-1">-1</button><button data-sc="${p.id}:1">+1</button><button data-sc="${p.id}:5">+5</button></div>`).join('');
+}
+function render() {
+  pruneSel(); renderPlane(); renderSeats(); renderHand(); renderMe(); renderSel(); renderScore();
+  if (lastMoved.size || lastNote) { clearTimeout(render.t); render.t = setTimeout(() => { lastMoved.clear(); lastNote = null; }, 320); }
+}
+function pruneSel() {
+  for (const k of [...tsel]) {
+    const [t, id] = [k[0], k.slice(2)];
+    const ok = t === 'c' ? S.loose.some(l => l.id === id) : t === 'z' ? !!zone(id) : S.notes.some(n => n.id === id && n.at === 'table');
+    if (!ok) tsel.delete(k);
+  }
+}
+
+/* ---------- feedback ---------- */
+let AC = null, snd = true;
+function ensureAudio() {
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+  if (AC && AC.state === 'suspended') AC.resume().catch(() => {});
+}
+function beep(f1, f2, dur, type = 'square', vol = .045) {
+  if (!snd || !AC) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(AC.destination); o.start(t); o.stop(t + dur + .02);
+}
+function noise(dur = .03, vol = .08) {
+  if (!snd || !AC) return;
+  const b = AC.createBuffer(1, Math.max(1, AC.sampleRate * dur | 0), AC.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const s = AC.createBufferSource(), g = AC.createGain(); g.gain.value = vol; s.buffer = b; s.connect(g).connect(AC.destination); s.start();
+}
+const SFX = {
+  pick: () => beep(520, 880, .07), drop: () => beep(320, 140, .08), flip: () => beep(900, 1400, .05, 'square', .03),
+  deal: () => beep(1300, 700, .04, 'triangle', .06), err: () => beep(220, 110, .14, 'sawtooth', .035),
+  give: () => { beep(660, 990, .08); setTimeout(() => beep(990, 1480, .09), 80); },
+  shuffle: () => { for (let i = 0; i < 7; i++) setTimeout(() => noise(.035), i * 50); },
+  tidy: () => { for (let i = 0; i < 3; i++) setTimeout(() => { noise(.02, .06); beep(500 + i * 120, 400 + i * 120, .03, 'square', .03); }, i * 70); },
+  stick: () => { noise(.025, .12); beep(170, 80, .07, 'square', .06); },
+  rip: () => { noise(.12, .1); beep(700, 180, .1, 'sawtooth', .03); },
+  huh: () => { beep(300, 600, .09, 'square', .04); setTimeout(() => beep(600, 450, .08, 'square', .04), 90); },
+  join: () => { beep(440, 660, .06); setTimeout(() => beep(660, 880, .06), 70); },
+};
+function toast(msg) {
+  if (!msg) return;
+  toastEl.textContent = msg; toastEl.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => toastEl.classList.remove('show'), 1900);
+}
+
+/* ---------- moving cards ---------- */
+function take(from, ids) {
+  if (from === 'hand') { S.hands.me = S.hands.me.filter(id => !ids.includes(id)); return ids.map(id => ({ id, f: true })); }
+  if (from === 'loose') { const out = S.loose.filter(l => ids.includes(l.id)); S.loose = S.loose.filter(l => !ids.includes(l.id)); return out.map(l => ({ id: l.id, f: l.f })); }
+  const z = zone(from.slice(5)); const out = z.cards.filter(c => ids.includes(c.id)); z.cards = z.cards.filter(c => !ids.includes(c.id)); return out;
+}
+function faceOf(from, id) {
+  if (from === 'hand') return true;
+  if (from === 'loose') return S.loose.find(l => l.id === id).f;
+  return zone(from.slice(5)).cards.find(c => c.id === id).f;
+}
+function dropTargetAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return null;
+  if (el.closest('#pop,#score,.bar,#pad,#menotes,#selbar,#hint')) return null;
+  const d = el.closest('[data-drop]');
+  if (d) return d.dataset.drop;
+  return el.closest('#plane') ? 'table' : null;
+}
+function setHot(key) {
+  if (key === hotKey) return;
+  document.querySelectorAll('.hot').forEach(e => e.classList.remove('hot'));
+  hotKey = key;
+  if (key && key !== 'table') document.querySelectorAll(`[data-drop="${key}"]`).forEach(e => e.classList.add('hot'));
+}
+function drawGhost() {
+  if (drag.type === 'note') { ghost.innerHTML = `<div class="note gn n-${drag.color}"><span>${esc(drag.text)}</span></div>`; return; }
+  const cw = 25 * L.hs, ch = 35 * L.hs;
+  ghost.innerHTML = drag.ids.map((id, i) => `<div class="card gc ${drag.face ? faceCls(id) : backCls(id)}"
+    style="width:${cw}px;height:${ch}px;left:${i * cw * 0.3 - cw / 2}px;top:${-ch / 2 + i * 3}px;transform:rotate(${-5 + i * 3}deg)"></div>`).join('');
+}
+function beginDrag() {
+  const d = drag;
+  d.ids = (d.from === 'hand' && sel.has(d.id)) ? S.hands.me.filter(id => sel.has(id)) : [d.id];
+  d.face = faceOf(d.from, d.id);
+  d.started = true;
+  d.ids.forEach(id => document.querySelectorAll(`[data-card="${id}"]`).forEach(e => e.classList.add('lifted')));
+  drawGhost(); SFX.pick();
+}
+const planeAt = (cx, cy) => { const r = scene.getBoundingClientRect(); return unproj(cx - r.left, cy - r.top); };
+function intoZone(z, cards, cx, cy) {
+  const p = planeAt(cx, cy), bx = clamp((p.x - z.x) * .4, -24, 24), by = clamp((p.y - z.y) * .4, -18, 18);  // where you toss it is where it lands
+  z.cards.push(...cards.map(c => ({ id: c.id, f: z.face === 'up', j: (z.layout === 'stack' && z.mess) ? jitter(bx, by) : null })));
+}
+function finishDrag(cx, cy) {
+  const d = drag, key = dropTargetAt(cx, cy);
+  ghost.innerHTML = ''; setHot(null);
+  if (!key || (key === d.from && key !== 'hand' && !key.startsWith('zone:'))) { render(); return; }
+  const [kind, arg] = key.split(':');
+  if (kind === 'zone' && d.from === key && zone(arg).layout !== 'stack') { render(); return; }
+  pushUndo();
+  if (kind === 'hand' && d.from === 'hand') {            // reorder within your hand
+    const rest = S.hands.me.filter(id => !d.ids.includes(id));
+    const keep = handCenters.filter((_, i) => !d.ids.includes(S.hands.me[i]));
+    const idx = keep.filter(c => c < cx).length;
+    rest.splice(idx, 0, ...d.ids); S.hands.me = rest; sel.clear(); render(); SFX.drop(); return;
+  }
+  const cards = take(d.from, d.ids);
+  cards.forEach(c => sel.delete(c.id));
+  lastMoved = new Set(d.ids);
+  if (kind === 'hand') { S.hands.me.push(...d.ids); SFX.drop(); }
+  else if (kind === 'seat') { S.hands[arg].push(...d.ids); SFX.give(); toast(`GAVE ${d.ids.length} CARD${d.ids.length > 1 ? 'S' : ''} TO ${NAME[arg]}`); }
+  else if (kind === 'zone') { intoZone(zone(arg), cards, cx, cy); SFX.drop(); }
+  else {
+    const p = planeAt(cx, cy), n = cards.length;
+    cards.forEach((c, i) => S.loose.push({
+      id: c.id, f: d.face, r: rnd(-6, 6),
+      x: clamp(p.x + (i - (n - 1) / 2) * 26, 26 + CW / 2, W - 26 - CW / 2), y: clamp(p.y, 26 + CH / 2, H - 26 - CH / 2) }));
+    SFX.drop();
+  }
+  render();
+}
+function clickCard(from, id) {
+  if (from === 'hand') { sel.has(id) ? sel.delete(id) : sel.add(id); renderHand(); SFX.deal(); return; }
+  pushUndo();
+  if (from === 'loose') { const l = S.loose.find(x => x.id === id); l.f = !l.f; }
+  else { const c = zone(from.slice(5)).cards.find(x => x.id === id); c.f = !c.f; }
+  lastMoved = new Set([id]); render(); SFX.flip();
+}
+
+/* ---------- box select + group move ---------- */
+function itemPos(k) {
+  const t = k[0], id = k.slice(2);
+  if (t === 'c') return S.loose.find(l => l.id === id);
+  if (t === 'z') return zone(id);
+  return S.notes.find(n => n.id === id);
+}
+function toggleSel(k) { tsel.has(k) ? tsel.delete(k) : tsel.add(k); renderPlane(); renderSel(); SFX.deal(); }
+function updateMarquee(e) {
+  const r = scene.getBoundingClientRect();
+  const x1 = Math.min(mq.x0, e.clientX) - r.left, x2 = Math.max(mq.x0, e.clientX) - r.left;
+  const y1 = Math.min(mq.y0, e.clientY) - r.top, y2 = Math.max(mq.y0, e.clientY) - r.top;
+  Object.assign(mqEl.style, { left: x1 + 'px', top: y1 + 'px', width: (x2 - x1) + 'px', height: (y2 - y1) + 'px' });
+  mqEl.hidden = false;
+  const inBox = (u, v) => { const p = proj(u, v); return p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2; };
+  tsel = new Set(mq.base);
+  S.loose.forEach(l => { if (inBox(l.x, l.y)) tsel.add('c:' + l.id); });
+  S.zones.forEach(z => { if (inBox(z.x, z.y)) tsel.add('z:' + z.id); });
+  S.notes.filter(n => n.at === 'table').forEach(n => { if (inBox(n.x, n.y)) tsel.add('n:' + n.id); });
+  renderPlane(); renderSel();
+}
+function startGroup(e) {
+  const p = planeAt(e.clientX, e.clientY), orig = {};
+  tsel.forEach(k => { const o = itemPos(k); if (o) orig[k] = [o.x, o.y]; });
+  gdrag = { x0: e.clientX, y0: e.clientY, p0: p, orig, moved: false, key: null };
+}
+function moveGroup(e) {
+  const p = planeAt(e.clientX, e.clientY), dx = p.x - gdrag.p0.x, dy = p.y - gdrag.p0.y;
+  for (const k in gdrag.orig) {
+    const o = itemPos(k); if (!o) continue;
+    const [ox, oy] = gdrag.orig[k], pad = k[0] === 'z' ? 80 : 50;
+    o.x = clamp(Math.round(ox + dx), pad, W - pad); o.y = clamp(Math.round(oy + dy), pad, H - pad);
+  }
+  renderPlane();
+  const key = dropTargetAt(e.clientX, e.clientY);
+  gdrag.key = key && key !== 'table' ? key : null;
+  setHot(gdrag.key);
+}
+function endGroup(e) {
+  const key = gdrag.key; setHot(null);
+  const cardIds = [...tsel].filter(k => k[0] === 'c').map(k => k.slice(2));
+  if (key && cardIds.length) {
+    for (const k in gdrag.orig) if (k[0] !== 'c') { const o = itemPos(k); if (o) [o.x, o.y] = gdrag.orig[k]; }
+    const [kind, arg] = key.split(':');
+    const cards = take('loose', cardIds); lastMoved = new Set(cardIds);
+    if (kind === 'hand') { S.hands.me.push(...cardIds); SFX.drop(); }
+    else if (kind === 'seat') { S.hands[arg].push(...cardIds); SFX.give(); toast(`GAVE ${cardIds.length} CARDS TO ${NAME[arg]}`); }
+    else if (kind === 'zone') { intoZone(zone(arg), cards, e.clientX, e.clientY); SFX.drop(); }
+    tsel.clear();
+  } else SFX.drop();
+  gdrag = null; render();
+}
+function selAction(a) {
+  const cardIds = [...tsel].filter(k => k[0] === 'c').map(k => k.slice(2));
+  if (a === 'clear') { tsel.clear(); render(); return; }
+  pushUndo();
+  if (a === 'flip') { S.loose.forEach(l => { if (cardIds.includes(l.id)) l.f = !l.f; }); lastMoved = new Set(cardIds); SFX.flip(); }
+  if (a === 'pile') {
+    const ls = S.loose.filter(l => cardIds.includes(l.id));
+    const x = ls.reduce((s, l) => s + l.x, 0) / ls.length, y = ls.reduce((s, l) => s + l.y, 0) / ls.length;
+    const up = ls.filter(l => l.f).length >= ls.length / 2;
+    const z = { id: 'z' + S.zn, name: 'PILE ' + S.zn, x: clamp(Math.round(x), 80, W - 80), y: clamp(Math.round(y), 90, H - 80), face: up ? 'up' : 'down', layout: 'stack', mess: true,
+      cards: ls.map(l => ({ id: l.id, f: l.f, j: jitter() })) };
+    S.zn++; S.zones.push(z); take('loose', cardIds); tsel.clear(); SFX.tidy(); toast(`MADE ${z.name} FROM ${ls.length} CARDS`);
+  }
+  render();
+}
+selbar.addEventListener('click', e => { const b = e.target.closest('[data-sb]'); if (b) { ensureAudio(); selAction(b.dataset.sb); } });
+
+/* ---------- table resize ---------- */
+function resizeTable(nw, nh) {
+  nw = clamp(Math.round(nw), 760, 1800); nh = clamp(Math.round(nh), 500, 1150);
+  const dx = (nw - W) / 2, dy = (nh - H) / 2;
+  if (!dx && !dy) return;
+  W = nw; H = nh; S.cfg.tw = W; S.cfg.th = H;
+  S.zones.forEach(z => { z.x = clamp(Math.round(z.x + dx), 80, W - 80); z.y = clamp(Math.round(z.y + dy), 90, H - 80); });
+  S.loose.forEach(l => { l.x = clamp(Math.round(l.x + dx), 26 + CW / 2, W - 26 - CW / 2); l.y = clamp(Math.round(l.y + dy), 26 + CH / 2, H - 26 - CH / 2); });
+  S.notes.filter(n => n.at === 'table').forEach(n => { n.x = clamp(Math.round(n.x + dx), 80, W - 80); n.y = clamp(Math.round(n.y + dy), 80, H - 80); });
+}
+
+/* ---------- sticky notes ---------- */
+function beginNoteDrag() {
+  const d = drag;
+  if (d.nid === 'pad') { d.text = S.pad.text; d.color = S.pad.color; }
+  else { const n = S.notes.find(o => o.id === d.nid); d.text = n.text; d.color = n.color; document.querySelectorAll(`[data-note="${d.nid}"]`).forEach(e => e.classList.add('lifted')); }
+  d.started = true; drawGhost(); SFX.pick();
+}
+function finishNoteDrag(cx, cy) {
+  const d = drag, key = dropTargetAt(cx, cy);
+  ghost.innerHTML = ''; setHot(null);
+  if (!key) { render(); return; }
+  const [kind, arg] = key.split(':');
+  let at, x, y;
+  if (kind === 'seat') {
+    at = arg;
+    const sp = document.querySelector(`.seat[data-drop="seat:${arg}"] .sprite`);
+    let fx = .3 + Math.random() * .4, fy = .5 + Math.random() * .12;
+    if (sp) { const r = sp.getBoundingClientRect(); if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) { fx = (cx - r.left) / r.width; fy = (cy - r.top) / r.height; } }
+    const st = activeSeats().find(s => s.id === arg);
+    x = clamp(fx, .16, .84); y = clamp(fy, .14, st && st.side === 'T' ? .62 : .7);
+  } else if (kind === 'table' || kind === 'zone') {
+    at = 'table'; const p = planeAt(cx, cy); x = clamp(p.x, 80, W - 80); y = clamp(p.y, 80, H - 80);
+  } else { render(); toast(kind === 'hand' ? 'STICK IT ON A FRIEND OR THE TABLE' : ''); return; }
+  pushUndo();
+  let n, was = null;
+  if (d.nid === 'pad') { n = { id: 'n' + (S.nn++), text: S.pad.text, color: S.pad.color, r: rnd(-10, 10), at, x, y }; S.notes.push(n); S.pad = null; }
+  else { n = S.notes.find(o => o.id === d.nid); was = n.at; Object.assign(n, { at, x, y, r: rnd(-10, 10) }); }
+  lastNote = n.id; SFX.stick(); render();
+  if (at !== 'table' && was !== at) react(at);
+}
+function clickNote(nid) {
+  if (nid === 'pad') { openCompose(); return; }
+  const n = S.notes.find(o => o.id === nid); if (!n) return;
+  if (n.at === 'me') { pushUndo(); S.notes = S.notes.filter(o => o !== n); renderMe(); SFX.rip(); toast('PEELED IT OFF YOUR BACK'); return; }
+  openNoteMenu(nid);
+}
+function react(pid) {
+  const q = pick(QUIPS); R[pid] = { say: q, shock: true }; renderSeats(); SFX.huh();
+  setTimeout(() => { if (R[pid] && R[pid].say === q) { R[pid].shock = false; renderSeats(); } }, 900);
+  setTimeout(() => { if (R[pid] && R[pid].say === q) { delete R[pid]; renderSeats(); } }, 2100);
+  if (!revengePending && Math.random() < .6) { revengePending = true; setTimeout(() => { revengePending = false; botNote(pid); }, 2600 + Math.random() * 1600); }
+}
+function botNote(pid) {
+  if (!activeSeats().some(s => s.id === pid)) return;
+  const n = { id: 'n' + (S.nn++), text: pick(REVENGE), color: pick(NCOLS), r: rnd(-12, 12), at: 'me' };
+  S.notes.push(n);
+  const mine = S.notes.filter(o => o.at === 'me'); if (mine.length > 5) S.notes = S.notes.filter(o => o !== mine[0]);
+  R[pid] = { say: 'GOTCHA' }; lastNote = n.id;
+  renderSeats(); renderMe(); SFX.stick(); toast(`${NAME[pid]} STUCK A NOTE ON YOU`);
+  setTimeout(() => { if (R[pid] && R[pid].say === 'GOTCHA') { delete R[pid]; renderSeats(); } lastNote = null; }, 1700);
+}
+
+/* ---------- pointer handling ---------- */
+scene.addEventListener('pointerdown', e => {
+  ensureAudio();
+  if (e.button > 0) return;
+  const t = e.target;
+  if (placing) {
+    if (t.closest('#plane')) { e.preventDefault(); placeZone(planeAt(e.clientX, e.clientY)); }
+    return;
+  }
+  if (t.closest('.zset,#score,#selbar,#hint')) return;
+  const base0 = { x0: e.clientX, y0: e.clientY, started: false };
+  if (t.closest('[data-grip]')) { e.preventDefault(); rdrag = { moved: false }; closePop(); return; }
+  const nt = t.closest('[data-note]');
+  if (nt) {
+    e.preventDefault();
+    const n = S.notes.find(o => o.id === nt.dataset.note), k = 'n:' + nt.dataset.note;
+    if (n && n.at === 'table') {
+      if (e.shiftKey) { toggleSel(k); return; }
+      if (tsel.has(k) && tsel.size > 1) { startGroup(e); return; }
+      if (!tsel.has(k) && tsel.size) { tsel.clear(); renderPlane(); renderSel(); }
+    }
+    drag = { type: 'note', nid: nt.dataset.note, ...base0 }; return;
+  }
+  if (t.closest('#pad')) { e.preventDefault(); drag = { type: 'note', nid: 'pad', ...base0 }; return; }
+  const tab = t.closest('[data-ztab]');
+  if (tab) {
+    e.preventDefault();
+    const k = 'z:' + tab.dataset.ztab;
+    if (e.shiftKey) { toggleSel(k); return; }
+    if (tsel.has(k) && tsel.size > 1) { startGroup(e); return; }
+    if (!tsel.has(k) && tsel.size) { tsel.clear(); renderPlane(); renderSel(); }
+    const z = zone(tab.dataset.ztab), p = planeAt(e.clientX, e.clientY);
+    zdrag = { id: z.id, dx: z.x - p.x, dy: z.y - p.y, x0: e.clientX, y0: e.clientY, moved: false }; return;
+  }
+  const c = t.closest('[data-card]');
+  if (c) {
+    if (dealing) return;
+    e.preventDefault();
+    if (c.dataset.from === 'loose') {
+      const k = 'c:' + c.dataset.card;
+      if (e.shiftKey) { toggleSel(k); return; }
+      if (tsel.has(k) && tsel.size > 1) { startGroup(e); return; }
+    }
+    if (tsel.size) { tsel.clear(); renderPlane(); renderSel(); }
+    drag = { type: 'card', id: c.dataset.card, from: c.dataset.from, ...base0 }; return;
+  }
+  if (t.closest('#plane')) { e.preventDefault(); mq = { x0: e.clientX, y0: e.clientY, base: e.shiftKey ? new Set(tsel) : new Set(), moved: false }; }
+});
+window.addEventListener('pointermove', e => {
+  if (rdrag) {
+    if (!rdrag.moved) { rdrag.moved = true; pushUndo(); }
+    const p = planeAt(e.clientX, e.clientY);
+    resizeTable(2 * (p.x - W / 2), 2 * (H / 2 - p.y)); placePlane(); renderPlane(); renderSeats(); return;
+  }
+  if (gdrag) {
+    if (!gdrag.moved) { if (Math.hypot(e.clientX - gdrag.x0, e.clientY - gdrag.y0) < 5) return; gdrag.moved = true; pushUndo(); closePop(); SFX.pick(); }
+    moveGroup(e); return;
+  }
+  if (mq) { if (!mq.moved && Math.hypot(e.clientX - mq.x0, e.clientY - mq.y0) < 6) return; mq.moved = true; updateMarquee(e); return; }
+  if (zdrag) {
+    if (!zdrag.moved && Math.hypot(e.clientX - zdrag.x0, e.clientY - zdrag.y0) < 5) return;
+    if (!zdrag.moved) { zdrag.moved = true; pushUndo(); closePop(); }
+    const z = zone(zdrag.id), p = planeAt(e.clientX, e.clientY);
+    z.x = clamp(Math.round(p.x + zdrag.dx), 80, W - 80); z.y = clamp(Math.round(p.y + zdrag.dy), 90, H - 80);
+    renderPlane(); return;
+  }
+  if (!drag) return;
+  if (!drag.started) {
+    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
+    if (drag.type === 'note') { if (drag.nid === 'pad' && !S.pad) return; beginNoteDrag(); } else beginDrag();
+  }
+  ghost.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
+  setHot(dropTargetAt(e.clientX, e.clientY));
+});
+window.addEventListener('pointerup', e => {
+  if (rdrag) { const m = rdrag.moved; rdrag = null; if (m) { layout(); render(); SFX.drop(); toast(`TABLE ${W} x ${H}`); } return; }
+  if (gdrag) {
+    if (gdrag.moved) endGroup(e);
+    else { const c = e.target.closest('[data-card]'); gdrag = null; if (c && c.dataset.from === 'loose') clickCard('loose', c.dataset.card); }
+    return;
+  }
+  if (mq) { const m = mq.moved; mq = null; mqEl.hidden = true; if (!m && tsel.size) { tsel.clear(); renderPlane(); renderSel(); } else if (m && tsel.size) SFX.deal(); return; }
+  if (zdrag) { const z = zdrag; zdrag = null; if (!z.moved) openPop(z.id); else SFX.drop(); return; }
+  if (!drag) return;
+  const d = drag;
+  if (d.type === 'note') { if (d.started) finishNoteDrag(e.clientX, e.clientY); else clickNote(d.nid); }
+  else if (d.started) finishDrag(e.clientX, e.clientY); else clickCard(d.from, d.id);
+  drag = null;
+});
+window.addEventListener('pointercancel', () => {
+  if (drag) { ghost.innerHTML = ''; drag = null; }
+  setHot(null); zdrag = null; mq = null; mqEl.hidden = true;
+  if (gdrag) { gdrag = null; } if (rdrag) { rdrag = null; layout(); }
+  render();
+});
+window.addEventListener('keydown', e => {
+  if (e.target.matches('input')) { if (e.key === 'Enter') { if (popMode === 'compose') readyNote(); else closePop(); } if (e.key === 'Escape') closePop(); return; }
+  if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); undo(); return; }
+  if (drag && drag.started && drag.type === 'card' && (e.key === 'f' || e.key === 'F')) { drag.face = !drag.face; drawGhost(); SFX.flip(); return; }
+  if (e.key === 'Escape') { if (placing) setPlacing(false); closePop(); if (sel.size) { sel.clear(); renderHand(); } if (tsel.size) { tsel.clear(); renderPlane(); renderSel(); } }
+});
+padEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCompose(); } });
+
+/* ---------- popovers ---------- */
+function placePop(r) {
+  pop.hidden = false;
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let top = r.bottom + 12; if (top + ph > innerHeight - 12) top = Math.max(12, r.top - ph - 12);
+  pop.style.left = clamp(r.left, 16, innerWidth - pw - 16) + 'px'; pop.style.top = top + 'px';
+}
+function closePop() { pop.hidden = true; popId = null; popMode = null; nameUndo = false; $('bTable').classList.remove('on'); }
+const swatches = cur => NCOLS.map(c => `<button class="sw n-${c}" data-nc="${c}" aria-pressed="${cur === c}" aria-label="${c} note"></button>`).join('');
+function openTable() {
+  popMode = 'table'; popId = null;
+  const c = S.cfg, total = c.decks * (52 + (c.jokers ? 2 : 0));
+  pop.innerHTML = `
+    <div class="ptitle">TABLE SETUP</div>
+    <div class="prow"><span>PLAYERS (INCLUDING YOU)</span><div class="step"><button data-tp="-1" ${c.players <= 2 ? 'disabled' : ''} aria-label="Fewer players">-</button><b>${c.players}</b><button data-tp="1" ${c.players >= 8 ? 'disabled' : ''} aria-label="More players">+</button></div></div>
+    <div class="prow"><span>DECKS: ${total} CARDS. CHANGING THIS GATHERS EVERY CARD INTO THE DECK</span>
+      <div class="step"><button data-td="-1" ${c.decks <= 1 ? 'disabled' : ''} aria-label="Fewer decks">-</button><b>${c.decks}</b><button data-td="1" ${c.decks >= 4 ? 'disabled' : ''} aria-label="More decks">+</button></div>
+      <div class="backs" aria-hidden="true">${Array.from({ length: c.decks }, (_, i) => `<i class="c-b${i}"></i>`).join('')}</div></div>
+    <div class="prow"><span>JOKERS</span><div class="seg"><button data-tj="1" aria-pressed="${c.jokers}">2 PER DECK</button><button data-tj="0" aria-pressed="${!c.jokers}">NONE</button></div></div>
+    <div class="prow"><span>CARD SIZE</span><div class="seg">${['S','M','L'].map(s => `<button data-ts="${s}" aria-pressed="${c.size === s}">${{S:'SMALL',M:'MEDIUM',L:'LARGE'}[s]}</button>`).join('')}</div></div>
+    <div class="prow"><span>TABLE SIZE ${W} x ${H}. OR DRAG THE STRIPED CORNER</span><div class="seg"><button data-tt="-1">SMALLER</button><button data-tt="1">BIGGER</button><button data-tt="0">FIT</button></div></div>
+    <div class="pacts"><button class="btn on" data-pa="done">DONE</button></div>`;
+  $('bTable').classList.add('on');
+  placePop($('bTable').getBoundingClientRect());
+}
+function setPlayers(n) {
+  n = clamp(n, 2, 8); if (n === S.cfg.players) return;
+  pushUndo();
+  const before = activeSeats().map(s => s.id);
+  S.cfg.players = n;
+  const after = activeSeats().map(s => s.id), gone = before.filter(id => !after.includes(id));
+  let dz = deckZone();
+  gone.forEach(id => {
+    const ids = S.hands[id]; S.hands[id] = [];
+    if (dz) dz.cards.unshift(...ids.map(c => ({ id: c, f: false }))); else ids.forEach(c => S.loose.push({ id: c, f: false, r: rnd(-8, 8), x: W / 2 + rnd(-60, 60), y: H / 2 + rnd(-40, 40) }));
+    S.notes = S.notes.filter(o => o.at !== id); delete R[id];
+  });
+  const [tw, th] = tableFor(n);
+  if (tw > W || th > H) resizeTable(Math.max(W, tw), Math.max(H, th));
+  layout(); render(); SFX.join();
+  toast(gone.length ? `${gone.map(id => NAME[id]).join(', ')} LEFT. THEIR CARDS WENT UNDER THE DECK` : `${NAME[after[after.length - 1]]} SAT DOWN`);
+}
+function setDecks(d, jokers) {
+  pushUndo(); S.cfg.decks = clamp(d, 1, 4); S.cfg.jokers = jokers;
+  gatherAll(); toast(`${S.cfg.decks} DECK${S.cfg.decks > 1 ? 'S' : ''}${jokers ? ' + JOKERS' : ''}: ${allIds().length} CARDS, ALL IN THE DECK`);
+}
+function openPop(id) {
+  const z = zone(id); if (!z) return; popId = id; popMode = 'zone';
+  const pr = (k, v) => `aria-pressed="${z[k] === v}"`;
+  pop.innerHTML = `
+    <div class="prow"><label for="zname">ZONE NAME</label><input id="zname" maxlength="12" value="${esc(z.name)}" autocomplete="off"></div>
+    <div class="prow"><span>CARDS LAND</span><div class="seg"><button data-pf="up" ${pr('face','up')}>FACE UP</button><button data-pf="down" ${pr('face','down')}>FACE DOWN</button></div></div>
+    <div class="prow"><span>LAYOUT</span><div class="seg"><button data-pl="stack" ${pr('layout','stack')}>STACK</button><button data-pl="spread" ${pr('layout','spread')}>SPREAD</button></div></div>
+    ${z.layout === 'stack' ? `<div class="prow"><span>PILE STYLE</span><div class="seg"><button data-pm="1" aria-pressed="${!!z.mess}">MESSY</button><button data-pm="0" aria-pressed="${!z.mess}">NEAT</button></div></div>` : ''}
+    <div class="prow"><span>DEAL + SHUFFLE FROM HERE</span><div class="seg"><button data-pd="1" aria-pressed="${!!z.deck}">DECK</button><button data-pd="0" aria-pressed="${!z.deck}">NORMAL</button></div></div>
+    <div class="pacts"><button class="btn" data-pa="shuffle">SHUFFLE</button><button class="btn" data-pa="flip">FLIP ALL</button><button class="btn danger" data-pa="del">DELETE</button><button class="btn on" data-pa="done">DONE</button></div>`;
+  const tab = document.querySelector(`[data-ztab="${id}"]`);
+  placePop(tab ? tab.getBoundingClientRect() : { left: 20, bottom: 80, top: 80 });
+}
+function openCompose() {
+  ensureAudio(); popMode = 'compose'; popId = null;
+  const cur = S.pad || { text: '', color: compColor }; compColor = cur.color;
+  pop.innerHTML = `
+    <div class="prow"><label for="ntext">WRITE A STICKY NOTE</label><input id="ntext" maxlength="24" value="${esc(cur.text)}" placeholder="KICK ME" autocomplete="off"></div>
+    <div class="prow"><span>COLOR</span><div class="seg">${swatches(compColor)}</div></div>
+    <div class="pacts"><button class="btn on" data-na="ready">PUT ON PAD</button><button class="btn" data-na="cancel">CANCEL</button></div>`;
+  placePop(padEl.getBoundingClientRect());
+  setTimeout(() => { const i = $('ntext'); if (i) i.focus(); }, 0);
+}
+function readyNote() {
+  const i = $('ntext'), text = (i ? i.value : '').trim().toUpperCase();
+  if (!text) { toast('WRITE SOMETHING FIRST'); SFX.err(); return; }
+  S.pad = { text, color: compColor }; closePop(); renderMe(); SFX.deal(); toast('NOW DRAG IT FROM THE PAD ONTO SOMEONE');
+}
+function openNoteMenu(nid) {
+  const n = S.notes.find(o => o.id === nid); if (!n) return; popMode = 'note'; popId = nid;
+  pop.innerHTML = `
+    <div class="prow"><label for="ntext">EDIT NOTE</label><input id="ntext" maxlength="24" value="${esc(n.text)}" autocomplete="off"></div>
+    <div class="prow"><span>COLOR</span><div class="seg">${swatches(n.color)}</div></div>
+    <div class="pacts"><button class="btn danger" data-na="rip">RIP IT OFF</button><button class="btn on" data-na="done">DONE</button></div>`;
+  const el = document.querySelector(`[data-note="${nid}"]`);
+  placePop(el ? el.getBoundingClientRect() : { left: 20, bottom: 120, top: 120 });
+}
+let nameUndo = false;
+pop.addEventListener('focusin', e => { if ((e.target.id === 'zname' || (e.target.id === 'ntext' && popMode === 'note')) && !nameUndo) { pushUndo(); nameUndo = true; } });
+pop.addEventListener('input', e => {
+  if (e.target.id === 'zname' && popMode === 'zone') { const z = zone(popId); z.name = (e.target.value.toUpperCase().trim() || 'ZONE'); renderPlane(); }
+  if (e.target.id === 'ntext' && popMode === 'note') { const n = S.notes.find(o => o.id === popId); if (n) { n.text = e.target.value.toUpperCase().trim() || '...'; renderPlane(); renderSeats(); } }
+});
+pop.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  if (popMode === 'table') {
+    const c = S.cfg;
+    if (b.dataset.tp) setPlayers(c.players + +b.dataset.tp);
+    else if (b.dataset.td) setDecks(c.decks + +b.dataset.td, c.jokers);
+    else if (b.dataset.tj) { const j = b.dataset.tj === '1'; if (j !== c.jokers) setDecks(c.decks, j); }
+    else if (b.dataset.ts) { if (b.dataset.ts !== c.size) { pushUndo(); c.size = b.dataset.ts; applyCfg(); layout(); render(); SFX.deal(); } }
+    else if (b.dataset.tt) {
+      pushUndo(); const v = +b.dataset.tt;
+      if (v === 0) { const [tw, th] = tableFor(c.players); resizeTable(tw, th); } else resizeTable(W + v * 100, H + v * 64);
+      layout(); render(); SFX.deal();
+    }
+    else if (b.dataset.pa === 'done') { closePop(); return; }
+    openTable(); return;
+  }
+  if (popMode === 'compose') {
+    if (b.dataset.nc) { compColor = b.dataset.nc; pop.querySelectorAll('[data-nc]').forEach(s => s.setAttribute('aria-pressed', s.dataset.nc === compColor)); renderMe(); SFX.deal(); }
+    else if (b.dataset.na === 'ready') readyNote();
+    else if (b.dataset.na === 'cancel') closePop();
+    return;
+  }
+  if (popMode === 'note') {
+    const n = S.notes.find(o => o.id === popId); if (!n) { closePop(); return; }
+    if (b.dataset.nc) { pushUndo(); n.color = b.dataset.nc; pop.querySelectorAll('[data-nc]').forEach(s => s.setAttribute('aria-pressed', s.dataset.nc === n.color)); render(); SFX.deal(); }
+    else if (b.dataset.na === 'rip') {
+      pushUndo(); S.notes = S.notes.filter(o => o !== n); closePop(); render(); SFX.rip();
+      toast(n.at === 'table' ? 'TORE IT UP' : `RIPPED IT OFF ${NAME[n.at]}`);
+    }
+    else if (b.dataset.na === 'done') closePop();
+    return;
+  }
+  const z = zone(popId); if (!z) return;
+  if (b.dataset.pf) { pushUndo(); z.face = b.dataset.pf; z.cards.forEach(c => c.f = z.face === 'up'); SFX.flip(); }
+  else if (b.dataset.pl) { pushUndo(); z.layout = b.dataset.pl; if (z.layout === 'spread') { z.w = z.w || 330; z.x = clamp(z.x, 26 + z.w / 2, W - 26 - z.w / 2); } SFX.deal(); }
+  else if (b.dataset.pm) { const on = b.dataset.pm === '1'; if (!on && isMessy(z)) { z.mess = false; closePop(); tidy(z); return; } pushUndo(); z.mess = on; SFX.deal(); }
+  else if (b.dataset.pd) { pushUndo(); const on = b.dataset.pd === '1'; if (on) S.zones.forEach(o => o.deck = false); z.deck = on; SFX.deal(); }
+  else if (b.dataset.pa === 'shuffle') { doShuffle(z); return; }
+  else if (b.dataset.pa === 'flip') { pushUndo(); z.cards.reverse().forEach(c => c.f = !c.f); SFX.flip(); }
+  else if (b.dataset.pa === 'del') {
+    pushUndo();
+    z.cards.forEach((c, i) => S.loose.push({ id: c.id, f: c.f, r: rnd(-8, 8), x: clamp(z.x + (i % 6) * 16 - 40, 64, W - 64), y: clamp(z.y + Math.floor(i / 6) * 10, 80, H - 80) }));
+    S.zones = S.zones.filter(o => o !== z); closePop(); render(); SFX.drop(); toast(`REMOVED ${z.name}`); return;
+  }
+  else if (b.dataset.pa === 'done') { closePop(); return; }
+  render(); openPop(z.id);
+});
+document.addEventListener('pointerdown', e => {
+  if (!pop.hidden && !e.target.closest('#pop,[data-zset],[data-ztab],#pad,[data-note],#bTable')) closePop();
+}, true);
+layer.addEventListener('click', e => {
+  const s = e.target.closest('[data-zset]'); if (s) { ensureAudio(); popId === s.dataset.zset && popMode === 'zone' ? closePop() : openPop(s.dataset.zset); return; }
+  const t = e.target.closest('[data-ztidy]'); if (t) { ensureAudio(); tidy(zone(t.dataset.ztidy)); }
+});
+
+/* ---------- table tools ---------- */
+function tidy(z) {
+  if (!z) return;
+  pushUndo();
+  const el = document.querySelector(`[data-zone="${z.id}"]`), cx = 11 + CW / 2, cy = 11 + CH / 2;
+  if (el) el.querySelectorAll('.card').forEach(c => {
+    const depth = +c.dataset.depth || 0;
+    c.classList.add('tidying'); c.style.left = cx + 'px'; c.style.top = (cy + Math.min(depth, 3) * 2) + 'px'; c.style.setProperty('--r', '0deg');
+  });
+  SFX.tidy();
+  setTimeout(() => { z.cards.forEach(c => c.j = null); render(); }, 270);
+}
+function doShuffle(z) {
+  if (!z) { toast('NO DECK ZONE. OPEN A ZONE\'S SET MENU TO PICK ONE'); SFX.err(); return; }
+  if (z.cards.length < 2) { toast('NOTHING TO SHUFFLE'); SFX.err(); return; }
+  pushUndo(); shuffle(z.cards); z.cards.forEach(c => c.j = null); render(); SFX.shuffle(); toast(`SHUFFLED ${z.name}`);
+  const el = document.querySelector(`[data-zone="${z.id}"]`); if (el) el.classList.add('shuffling');
+  if (popId && popMode === 'zone') openPop(popId);
+}
+function deal() {
+  if (dealing) return;
+  const z = deckZone();
+  if (!z) { toast('NO DECK ZONE. OPEN A ZONE\'S SET MENU TO PICK ONE'); SFX.err(); return; }
+  if (!z.cards.length) { toast('THE DECK IS EMPTY'); SFX.err(); return; }
+  pushUndo(); dealing = true; closePop();
+  const seats = [...activeSeats().map(s => s.id), 'me'], order = [];
+  for (let i = 0; i < dealN; i++) order.push(...seats);
+  let i = 0;
+  const step = () => {
+    if (i >= order.length || !z.cards.length) { dealing = false; toast(z.cards.length ? `DEALT ${dealN} EACH` : 'DECK RAN OUT'); return; }
+    const c = z.cards.pop(), p = order[i++];
+    S.hands[p].push(c.id); lastMoved = new Set([c.id]); render(); SFX.deal();
+    setTimeout(step, Math.max(35, 75 - seats.length * 5));
+  };
+  step();
+}
+function gatherAll() {
+  let z = deckZone();
+  if (!z) { z = { id: 'z' + S.zn++, name: 'DECK', x: W / 2, y: H / 2, face: 'down', layout: 'stack', deck: true, mess: false, cards: [] }; S.zones.push(z); }
+  S.zones.forEach(o => o.cards = []);
+  Object.keys(S.hands).forEach(k => S.hands[k] = []);
+  S.loose = []; sel.clear(); tsel.clear();
+  z.cards = shuffle(allIds()).map(id => ({ id, f: false }));
+  render(); SFX.shuffle();
+}
+function collect() { pushUndo(); gatherAll(); toast(`ALL ${allIds().length} CARDS BACK IN THE DECK`); }
+function setPlacing(v) {
+  placing = v; scene.classList.toggle('placing', v); $('bZone').classList.toggle('on', v);
+  if (v) { closePop(); toast('CLICK THE TABLE TO PLACE A ZONE'); }
+}
+function placeZone(p) {
+  pushUndo();
+  const z = { id: 'z' + S.zn, name: 'ZONE ' + S.zn, x: clamp(Math.round(p.x), 80, W - 80), y: clamp(Math.round(p.y), 90, H - 80), face: 'up', layout: 'stack', mess: true, cards: [] };
+  S.zn++; S.zones.push(z); setPlacing(false); render(); SFX.drop(); openPop(z.id);
+}
+$('bTable').onclick = () => { ensureAudio(); popMode === 'table' ? closePop() : openTable(); };
+$('bZone').onclick = () => { ensureAudio(); setPlacing(!placing); };
+$('bDeal').onclick = () => { ensureAudio(); deal(); };
+$('bLess').onclick = () => { dealN = Math.max(1, dealN - 1); $('bDeal').textContent = `DEAL ${dealN}`; };
+$('bMore').onclick = () => { dealN = Math.min(26, dealN + 1); $('bDeal').textContent = `DEAL ${dealN}`; };
+$('bShuf').onclick = () => { ensureAudio(); doShuffle(deckZone()); };
+$('bCollect').onclick = () => { ensureAudio(); collect(); };
+$('bUndo').onclick = () => { ensureAudio(); undo(); };
+$('bScore').onclick = () => { scoreEl.hidden = !scoreEl.hidden; $('bScore').classList.toggle('on', !scoreEl.hidden); renderScore(); };
+$('bHelp').onclick = () => { hintEl.hidden = !hintEl.hidden; $('bHelp').classList.toggle('on', !hintEl.hidden); };
+$('hintX').onclick = () => { hintEl.hidden = true; $('bHelp').classList.remove('on'); };
+$('bSnd').onclick = () => { snd = !snd; $('bSnd').textContent = snd ? 'SND ON' : 'SND OFF'; $('bSnd').setAttribute('aria-pressed', snd); ensureAudio(); SFX.deal(); };
+scoreEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-sc]'); if (!b) return;
+  if (b.dataset.sc === 'close') { $('bScore').click(); return; }
+  const [p, v] = b.dataset.sc.split(':'); pushUndo(); S.score[p] += +v; renderScore(); ensureAudio(); +v > 0 ? SFX.give() : SFX.drop();
+});
+
+/* ---------- boot ---------- */
+function start(data) {
+  S = (data && data.S && data.S.cfg && data.S.zones) ? data.S : fresh();
+  S.notes = S.notes || []; S.nn = S.nn || 1; if (S.pad === undefined) S.pad = null;
+  applyCfg(); layout(); render();
+  try { window.claude?.hot?.snapshot?.(() => ({ S: JSON.parse(JSON.stringify(S)) })); } catch (e) {}
+  new ResizeObserver(() => { if (rdrag) return; layout(); render(); if (popId && popMode === 'zone') openPop(popId); }).observe(scene);
+}
+const boot = d => start(d || {});
+if (window.claude?.hot?.ready) window.claude.hot.ready(boot); else boot(window.claude?.hot?.data ?? {});
+})();
+</script>

@@ -1,0 +1,17 @@
+{
+  "name": "@omni/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Game state types, intents, the pure reducer and per-player redaction shared by client and server.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schemas": "./src/protocol.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

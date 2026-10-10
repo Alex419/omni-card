@@ -1,0 +1,21 @@
+{
+  "name": "@omni/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Authoritative game server: rooms over WebSockets, plus the feedback API.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "sirv": "^3.0.2",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15"
+  }
+}

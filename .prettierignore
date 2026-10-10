@@ -1,0 +1,7 @@
+prototype/
+dist/
+coverage/
+package-lock.json
+*.md
+.playwright-mcp/
+.data/
