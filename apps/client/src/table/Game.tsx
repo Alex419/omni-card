@@ -43,6 +43,10 @@ type Drag =
       hot: string | null;
       x: number;
       y: number;
+      /** Holding still on a pile's top card counts up how many cards the drag takes. */
+      count: number;
+      /** How many cards that pile has, so the count can't run past it. Null when holding doesn't count. */
+      pile: number | null;
     }
   | {
       kind: 'note';
@@ -91,6 +95,8 @@ const sourceOf = (from: string): Source =>
       ? { kind: 'loose' }
       : { kind: 'zone', id: from.slice(5) };
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+/** Holding the pointer still on a pile adds one more card to the grab this often. */
+const HOLD_STEP_MS = 750;
 
 export function Game({ client, view, code }: { client: RoomClient; view: TableView; code: string }) {
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -295,7 +301,12 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
   /** What's under the pointer that you could drop onto: 'hand', 'seat:N', 'zone:ID', 'table' or null. */
   const dropTargetAt = (x: number, y: number): string | null => {
     const el = document.elementFromPoint(x, y);
-    if (!el || el.closest('.pop,.score,.bar,.pad,.menotes,.selbar,.hint')) return null;
+    if (el?.closest('.pop,.score')) return null;
+    // Anywhere along the bottom strip counts as your hand, even over your notes, at the very edge,
+    // or past the bottom of the window: a quick flick downwards shouldn't miss.
+    const scene = sceneRef.current!.getBoundingClientRect();
+    if (live.current.view.hand && y >= scene.bottom - live.current.L.handH) return 'hand';
+    if (!el || el.closest('.bar,.pad,.menotes,.selbar,.hint')) return null;
     const d = el.closest<HTMLElement>('[data-drop]');
     if (d) return d.dataset.drop ?? null;
     return el.closest('.plane') ? 'table' : null;
@@ -427,7 +438,9 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
         if (ts.has(k) && ts.size > 1) return startGroup(e);
       }
       if (ts.size) setTsel(new Set());
-      drag.current = {
+      const z = from.startsWith('zone:') ? v.zones.find((q) => q.id === from.slice(5)) : undefined;
+      const onTop = z?.layout === 'stack' && z.cards.at(-1)?.vid === vid && z.count > 1;
+      const cd: Drag = {
         kind: 'card',
         from,
         vid,
@@ -439,7 +452,11 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
         hot: null,
         x: e.clientX,
         y: e.clientY,
+        count: 1,
+        pile: onTop ? z.count : null,
       };
+      drag.current = cd;
+      if (onTop) startHold(cd);
       return;
     }
     if (t.closest('.plane')) {
@@ -454,6 +471,22 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
     }
   };
 
+  /** While the pointer rests on a pile's top card, count up one card every HOLD_STEP_MS. */
+  const holdTimer = useRef<number | undefined>(undefined);
+  const stopHold = () => {
+    window.clearInterval(holdTimer.current);
+    holdTimer.current = undefined;
+  };
+  const startHold = (cd: Extract<Drag, { kind: 'card' }>) => {
+    stopHold();
+    holdTimer.current = window.setInterval(() => {
+      if (drag.current !== cd || cd.started || cd.count >= (cd.pile ?? 1)) return stopHold();
+      cd.count++;
+      SFX.flip();
+      rerender();
+    }, HOLD_STEP_MS);
+  };
+
   /** Cards a drag picks up: the whole selection if you grab a selected hand card, else just that card. */
   const beginCardDrag = (d: Extract<Drag, { kind: 'card' }>) => {
     const v = live.current.view;
@@ -464,7 +497,15 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
         ? hand.filter((c) => live.current.sel.has(c.vid))
         : hand.filter((c) => c.vid === d.vid);
     } else if (d.from === 'loose') cards = v.loose.filter((c) => c.vid === d.vid);
-    else cards = v.zones.find((z) => z.id === d.from.slice(5))?.cards.filter((c) => c.vid === d.vid) ?? [];
+    else {
+      const z = v.zones.find((q) => q.id === d.from.slice(5));
+      // A counted grab carries the top `count` cards. Only the top few are known here; the
+      // server picks the rest. The ghost shows the known ones plus the count.
+      cards =
+        d.count > 1
+          ? (z?.cards.slice(-d.count).reverse() ?? [])
+          : (z?.cards.filter((c) => c.vid === d.vid) ?? []);
+    }
     if (!cards.length) return false;
     d.cards = cards;
     d.vids = cards.map((c) => c.vid);
@@ -551,9 +592,12 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
           if (d.nid === 'pad' && !live.current.pad) return;
           d.started = true;
           SFX.pick();
-        } else if (!beginCardDrag(d)) {
-          drag.current = null;
-          return;
+        } else {
+          stopHold();
+          if (!beginCardDrag(d)) {
+            drag.current = null;
+            return;
+          }
         }
       }
       d.x = e.clientX;
@@ -675,8 +719,11 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
       }
 
       // card
+      stopHold();
       if (!d.started) {
         rerender();
+        // Let go of a counted grab without moving: nothing happens (a click would flip the card).
+        if (d.count > 1) return;
         if (d.from === 'hand') {
           setSel((s) => {
             const n = new Set(s);
@@ -693,6 +740,7 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
       if (!key || (key === d.from && key !== 'hand' && !key.startsWith('zone:'))) return;
       const [kind, arg] = key.split(':');
       if (kind === 'zone' && d.from === key && v.zones.find((z) => z.id === arg)?.layout !== 'stack') return;
+      if (d.count > 1 && key === d.from) return;
       if (kind === 'hand' && d.from === 'hand') {
         // Reorder: count the cards (not being moved) whose centre is left of the drop point.
         const hand = v.hand ?? [];
@@ -708,6 +756,13 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
       }
       const target = targetFor(key, e.clientX, e.clientY);
       if (!target) return;
+      if (d.count > 1) {
+        void send(
+          { type: 'drawCards', id: d.from.slice(5), count: d.count, to: target, up: d.up },
+          { hide: d.vids },
+        );
+        return;
+      }
       setSel((s) => new Set([...s].filter((x) => !d.vids.includes(x))));
       void send(
         { type: 'moveCards', from: sourceOf(d.from), vids: d.vids, to: target, up: d.up },
@@ -725,6 +780,7 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
     };
 
     const cancel = () => {
+      stopHold();
       if (drag.current?.kind === 'resize') {
         frozen.current = null;
         setPreview(null);
@@ -1013,6 +1069,14 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
 
 /** What you're carrying, drawn at the pointer. */
 function Ghost({ d, hs }: { d: Drag | null; hs: number }) {
+  // Holding still on a pile: show the count growing under your pointer before you drag.
+  if (d?.kind === 'card' && !d.started && d.count > 1) {
+    return (
+      <div className="ghost" style={{ transform: `translate(${d.x0}px,${d.y0}px)` }}>
+        <span className="gcount">{d.count}</span>
+      </div>
+    );
+  }
   if (!d || !(d.kind === 'card' || d.kind === 'note') || !d.started) return null;
   const style = { transform: `translate(${d.x}px,${d.y}px)` };
   if (d.kind === 'note') {
@@ -1028,6 +1092,7 @@ function Ghost({ d, hs }: { d: Drag | null; hs: number }) {
   const ch = 35 * hs;
   return (
     <div className="ghost" style={style}>
+      {d.count > 1 && <span className="gcount">{d.count}</span>}
       {d.cards.map((c, i) => {
         // Flipped face up with F but you don't know what it is yet: a question mark until it lands.
         const cls = d.up ? (c.face ? cardClass(c.face, c.back) : 'c-q') : `c-b${c.back}`;

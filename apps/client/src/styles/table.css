@@ -285,3 +285,16 @@
   background-size: 100% 100%;
   image-rendering: pixelated;
 }
+/* How many cards a press-and-hold on a pile has counted off */
+.gcount {
+  position: absolute;
+  left: 10px;
+  top: -44px;
+  z-index: 1;
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  color: #000;
+  background: var(--gold);
+  padding: 6px 7px 5px;
+  box-shadow: var(--edge);
+}

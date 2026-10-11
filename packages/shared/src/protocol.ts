@@ -56,6 +56,18 @@ export const IntentSchema = z.discriminatedUnion('type', [
     /** Face for cards dropped loose on the table (F flips mid-drag). Zones decide for themselves. */
     up: z.boolean().optional(),
   }),
+  /** Take the top `count` cards of a zone (press and hold on a pile). The server picks the cards. */
+  z.object({
+    type: z.literal('drawCards'),
+    id,
+    count: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_DECKS * 54),
+    to: TargetSchema,
+    up: z.boolean().optional(),
+  }),
   z.object({ type: z.literal('flipCards'), from: SourceSchema, vids }),
   z.object({
     type: z.literal('moveItems'),

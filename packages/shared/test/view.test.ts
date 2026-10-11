@@ -269,6 +269,10 @@ function randomIntent(game: GameState, seat: number, rng: Rng): Intent {
         : null;
     },
     () =>
+      zone?.cards.length
+        ? { type: 'drawCards', id: zone.id, count: 1 + Math.floor(rng() * 8), to: target(), up: rng() < 0.5 }
+        : null,
+    () =>
       view.loose.length
         ? { type: 'flipCards', from: { kind: 'loose' }, vids: [pick(rng, view.loose).vid] }
         : null,

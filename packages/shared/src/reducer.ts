@@ -280,6 +280,27 @@ function targetLabel(to: Target, n: number): string {
   return `MOVE ${plural(n, 'CARD')}`;
 }
 
+/** Puts cards that were just taken somewhere: your hand, a friend's hand, a zone or the table. */
+function place(t: TableState, c: RunCtx, from: Source, cards: Card[], to: Target, up?: boolean): Outcome {
+  const n = cards.length;
+  if (to.kind === 'hand') {
+    t.hands[c.seat]!.push(...cards.map((x) => x.id));
+    log(c, '', 'drop');
+  } else if (to.kind === 'seat') {
+    t.hands[to.seat]!.push(...cards.map((x) => x.id));
+    log(c, to.seat === c.seat ? '' : `GAVE ${plural(n, 'CARD')} TO ${seatName(c, to.seat)}`, 'give');
+  } else if (to.kind === 'zone') {
+    const z = zoneById(t, to.id);
+    intoZone(t, c, z, cards, to.x, to.y);
+    // Playing several cards from your hand is worth announcing: others should look.
+    log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS ON ${z.name}` : '', 'drop');
+  } else {
+    onTable(t, c, cards, to.x, to.y, up);
+    log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS` : '', 'drop');
+  }
+  return { label: targetLabel(to, n) };
+}
+
 /* ---------- intent handlers ---------- */
 
 function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx): Outcome {
@@ -301,24 +322,27 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
         const z = zoneById(t, to.id);
         if (from.kind === 'zone' && from.id === to.id && z.layout !== 'stack') return { label: null };
       }
-      const cards = take(t, c, from, vids);
-      const n = cards.length;
-      if (to.kind === 'hand') {
+      return place(t, c, from, take(t, c, from, vids), to, intent.up);
+    }
+
+    case 'drawCards': {
+      // Press and hold on a pile picks up its top N cards. Clients can't name them (a pile only
+      // sends its top few cards), so the server counts them off the top itself.
+      const z = zoneById(t, intent.id);
+      if (intent.to.kind === 'zone' && intent.to.id === z.id) return { label: null };
+      if (intent.to.kind === 'seat') checkSeat(t, intent.to.seat);
+      if (intent.to.kind === 'zone') zoneById(t, intent.to.id);
+      if (!z.cards.length) reject('THAT PILE IS EMPTY');
+      const n = Math.min(intent.count, z.cards.length);
+      // Top card first, the same order as drawing them one at a time.
+      const cards = z.cards.splice(z.cards.length - n, n).reverse();
+      if (intent.to.kind === 'hand' && n > 1) {
+        // Drawing a handful is public at a real table too.
         t.hands[c.seat]!.push(...cards.map((x) => x.id));
-        log(c, '', 'drop');
-      } else if (to.kind === 'seat') {
-        t.hands[to.seat]!.push(...cards.map((x) => x.id));
-        log(c, to.seat === c.seat ? '' : `GAVE ${plural(n, 'CARD')} TO ${seatName(c, to.seat)}`, 'give');
-      } else if (to.kind === 'zone') {
-        const z = zoneById(t, to.id);
-        intoZone(t, c, z, cards, to.x, to.y);
-        // Playing several cards from your hand is worth announcing: others should look.
-        log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS ON ${z.name}` : '', 'drop');
-      } else {
-        onTable(t, c, cards, to.x, to.y, intent.up);
-        log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS` : '', 'drop');
+        log(c, `DREW ${n} CARDS FROM ${z.name}`, 'drop');
+        return { label: targetLabel(intent.to, n) };
       }
-      return { label: targetLabel(to, n) };
+      return place(t, c, { kind: 'zone', id: z.id }, cards, intent.to, intent.up);
     }
 
     case 'flipCards': {

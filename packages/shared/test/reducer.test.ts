@@ -90,6 +90,42 @@ describe('moving cards', () => {
     expect(g.table.loose).toHaveLength(0);
   });
 
+  it('draws the top N cards of a pile in one go, top card first, and announces it', () => {
+    const { game, rng } = setup(2);
+    const before = allCards(game);
+    const top3 = deckOf(game)
+      .cards.slice(-3)
+      .map((c) => c.id)
+      .reverse();
+    const r = act(game, 0, { type: 'drawCards', id: deckOf(game).id, count: 3, to: { kind: 'hand' } }, rng);
+    expect(r.game.table.hands[0]).toEqual(top3);
+    expect(deckOf(r.game).cards).toHaveLength(deckOf(game).cards.length - 3);
+    expect(allCards(r.game)).toEqual(before);
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'log', text: 'DREW 3 CARDS FROM DECK' }));
+    // One undo puts all three back.
+    const u = act(r.game, 1, { type: 'undo' }, rng).game;
+    expect(deckOf(u).cards.map((c) => c.id)).toEqual(deckOf(game).cards.map((c) => c.id));
+  });
+
+  it('draws no more cards than the pile has, and refuses an empty pile', () => {
+    const { game, rng } = setup(2);
+    const n = deckOf(game).cards.length;
+    const g = act(
+      game,
+      0,
+      { type: 'drawCards', id: deckOf(game).id, count: n + 50, to: { kind: 'table', x: 500, y: 300 } },
+      rng,
+    ).game;
+    expect(g.table.loose).toHaveLength(n);
+    expect(deckOf(g).cards).toHaveLength(0);
+    const r = applyIntent(
+      g,
+      { type: 'drawCards', id: deckOf(g).id, count: 2, to: { kind: 'hand' } },
+      ctx(g, 0, rng),
+    );
+    expect(r).toEqual({ ok: false, error: 'THAT PILE IS EMPTY' });
+  });
+
   it('gives cards to another seat and logs it', () => {
     const { game, rng } = setup(2);
     let g = act(game, 0, { type: 'deal', count: 2 }, rng).game;

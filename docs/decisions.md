@@ -444,3 +444,26 @@ screens that have the least room. Priority+ is the standard pattern for this (Gi
 
 **Also.** SND ON/OFF became a pixel speaker icon (sound waves, or a red X), with an `aria-label` so screen readers
 still announce it. FEEDBACK is pink in the bar and the lobby, and the HELP panel asks for feedback.
+
+## 27. Drawing several cards: press and hold, counted by the server
+
+**Decision.** Holding the pointer still on a pile's top card counts up one card every 0.75 s (a gold badge shows the
+count). Dragging then carries that many cards, sent as one new intent, `drawCards { id, count, to }`. Letting go
+without moving cancels instead of flipping the card.
+
+**Why a new intent instead of `moveCards`.** `moveCards` names cards by vid, but a pile only sends its top 4 cards
+(#4: deck order is never sent). The client literally can't name card #5, so it asks for "the top N" and the server
+counts them off. The redaction model stays untouched: the client learns nothing it couldn't learn by drawing one at a time.
+
+**Trade-offs.**
+- *Timing:* a fixed 0.75 s step is slow for "draw 13", but easy to stop on the number you want. A speed-up (or the mouse
+  wheel adjusting the count) can be added later if players ask.
+- *Races:* if someone else draws first, you get whatever is on top when the server applies your intent. That's the
+  real-table behaviour and avoids rejecting the whole grab.
+- Drawing more than one card into your hand is announced ("ALEX DREW 5 CARDS FROM DECK"), like seeing it across a table.
+  The whole grab is one undo step.
+
+**Also: the hand is the whole bottom strip.** Drops used to be hit-tested only with `elementFromPoint`. A fast flick
+that ended past the window's bottom edge, or over your sticky notes, found nothing and the card snapped back. Now
+any drop at or below the top of the hand strip (including outside the window) counts as your hand, unless it's over
+an open popover.
