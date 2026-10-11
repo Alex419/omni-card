@@ -467,3 +467,8 @@ counts them off. The redaction model stays untouched: the client learns nothing 
 that ended past the window's bottom edge, or over your sticky notes, found nothing and the card snapped back. Now
 any drop at or below the top of the hand strip (including outside the window) counts as your hand, unless it's over
 an open popover.
+
+**Also: a typed deal count.** The number between DEAL and + is a boxed input, so big jumps don't take a dozen
+clicks. It keeps a local draft while you type and only clamps (1–26) and saves on Enter or when you click away. Clamping
+on every keystroke would turn "1" into a dead end while you're on your way to typing "12". The box is a sibling of the
+DEAL button, not inside it: an input inside a `<button>` is invalid HTML, and clicking it would also deal.

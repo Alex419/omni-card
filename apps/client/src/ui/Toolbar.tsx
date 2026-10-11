@@ -54,8 +54,9 @@ export function Toolbar(p: Props) {
         -
       </button>
       <button className="btn" onClick={p.onDeal} title="Deal from the deck to every player">
-        DEAL {p.dealN}
+        DEAL
       </button>
+      <DealCount n={p.dealN} set={p.setDealN} />
       <button
         className="btn sq"
         aria-label="Deal more"
@@ -297,5 +298,38 @@ export function Toolbar(p: Props) {
         </Popover>
       )}
     </header>
+  );
+}
+
+/**
+ * The number of cards DEAL hands out, as a box you can type into for big jumps (- and + still nudge it).
+ * While you type it keeps your draft; the value is clamped and saved when you press Enter or click away.
+ */
+function DealCount({ n, set }: { n: number; set: (n: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    const v = parseInt(draft ?? '', 10);
+    if (Number.isFinite(v)) set(Math.min(LIMITS.dealMax, Math.max(1, v)));
+    setDraft(null);
+  };
+  return (
+    <input
+      className="field dealn"
+      inputMode="numeric"
+      maxLength={2}
+      aria-label="Cards to deal to each player"
+      title={`Cards to deal to each player (1-${LIMITS.dealMax})`}
+      value={draft ?? String(n)}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          setDraft(null);
+          requestAnimationFrame(() => (e.target as HTMLInputElement).blur());
+        }
+      }}
+    />
   );
 }

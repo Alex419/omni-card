@@ -73,6 +73,7 @@
   padding: 8px 10px;
   box-shadow: 0 0 0 3px #000;
 }
+.hint .hint-new,
 .hint .hint-fb {
   display: block;
   margin-top: 6px;
@@ -171,4 +172,7 @@
     font-size: 16px;
     max-width: 56%;
   }
+}
+.hint .hint-new {
+  color: var(--grey);
 }

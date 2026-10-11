@@ -111,3 +111,16 @@
   border-bottom-width: 0;
   vertical-align: 1px;
 }
+/* Typed deal count: a boxed number so it reads as editable */
+.deal .dealn {
+  width: 3.4em;
+  padding: 7px 4px 6px;
+  text-align: center;
+  color: var(--gold);
+  outline: 2px solid var(--grey);
+  outline-offset: -2px;
+  cursor: text;
+}
+.deal .dealn:focus {
+  outline-color: var(--gold);
+}
