@@ -472,3 +472,30 @@ an open popover.
 clicks. It keeps a local draft while you type and only clamps (1–26) and saves on Enter or when you click away. Clamping
 on every keystroke would turn "1" into a dead end while you're on your way to typing "12". The box is a sibling of the
 DEAL button, not inside it: an input inside a `<button>` is invalid HTML, and clicking it would also deal.
+
+## 28. Search engines and link previews (SEO)
+
+**Decision.** Keep the single-page app, and give the home page what search engines and chat apps read:
+- **Real words on the page.** An "About" section under the lobby (what it is and how it works; no list of games, since any game works).
+  The logo is now the page's `<h1>`. Before this, the home page had about ten words, so there was little for a search engine
+  to match.
+- **`<head>` tags** in `apps/client/index.html`:
+  - a keyword-bearing `<title>` and meta description (what shows in search results);
+  - a canonical URL;
+  - Open Graph and Twitter tags with a 1200×630 screenshot (`public/og.png`). This is the preview card when an invite
+    link is pasted into Discord, iMessage or Slack, which matters a lot for a game that spreads by links;
+  - JSON-LD `WebApplication` data (lets Google know it's a free web game).
+- **`robots.txt`** blocks `/r/` (rooms are short-lived and private) and `/api/`. **`sitemap.xml`** lists the home page.
+- A room's browser tab gets a short title ("Omni Card: room 5D3Y9") instead of the long search title.
+
+**Why not server-side rendering or prerendering?** Google runs JavaScript, so it sees the React-rendered lobby. The
+only page worth ranking is the home page. SSR (Next.js, or Vite SSR) would add a whole rendering layer for no gain. If
+more content pages are added later (rules guides such as "how to play Spades online"), prerendering them to static
+HTML is the step up. Those pages are also the biggest SEO lever: they match the exact phrases people search for.
+
+**Trade-offs and limits.**
+- The site URL is hardcoded in three places (`index.html`, `robots.txt`, `sitemap.xml`). Moving to a custom domain
+  means changing all three. A custom domain also helps ranking and trust more than anything on this list: an
+  `onrender.com` subdomain shares its reputation with every other app on Render.
+- Free-tier sleep: if Googlebot visits while the server sleeps, the page loads slowly, which counts a little against it.
+- None of this makes Google *find* the site; links and Search Console do (see the README).

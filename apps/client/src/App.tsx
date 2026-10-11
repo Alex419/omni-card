@@ -21,5 +21,12 @@ export function App() {
     return () => window.removeEventListener('popstate', on);
   }, []);
   const code = roomFromPath(path);
+  // The long, search-friendly title in index.html is for the home page; a table's tab just names the room.
+  useEffect(() => {
+    if (!code) return;
+    const home = document.title;
+    document.title = `Omni Card: room ${code}`;
+    return () => void (document.title = home);
+  }, [code]);
   return code ? <TableScreen key={code} code={code} /> : <Lobby />;
 }

@@ -12,6 +12,8 @@
   gap: 22px;
 }
 .logo {
+  margin: 0;
+  font-weight: 400;
   font-family: var(--font-pixel);
   font-size: clamp(26px, 8vw, 44px);
   color: var(--gold);
@@ -90,4 +92,33 @@
   text-align: center;
   padding: 16px;
   line-height: 1.6;
+}
+
+/* About: plain-language description below the lobby, for newcomers and for search engines */
+.about {
+  width: min(560px, 100%);
+  margin-top: 40px;
+  color: var(--grey);
+  font-size: 20px;
+  line-height: 1.05;
+}
+.about h2 {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--gold);
+  margin: 26px 0 10px;
+}
+.about h2:first-child {
+  margin-top: 0;
+}
+.about p {
+  margin: 0;
+}
+.about ol,
+.about ul {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 4px;
 }

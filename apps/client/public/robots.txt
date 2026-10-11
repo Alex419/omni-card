@@ -1,0 +1,6 @@
+# Room pages (/r/CODE) are short-lived private tables: nothing useful to index.
+User-agent: *
+Disallow: /r/
+Disallow: /api/
+
+Sitemap: https://omni-card.onrender.com/sitemap.xml

@@ -48,10 +48,10 @@ export function Lobby() {
     <div className="app">
       <div className="lobby">
         <div className="lobby-card">
-          <div className="logo">
+          <h1 className="logo">
             OMNI<span>CARD</span>
-          </div>
-          <p className="tagline">A card table for almost any game. You bring the rules.</p>
+          </h1>
+          <p className="tagline">A free online card table for almost any game. You bring the rules.</p>
           <div className="demo-cards" aria-hidden="true">
             <i className="c-AS" />
             <i className="c-b0" />
@@ -102,6 +102,7 @@ export function Lobby() {
             </button>
           </div>
         </div>
+        <About />
       </div>
       {feedback && (
         <Popover anchor={feedback} onClose={() => setFeedback(null)} label="feedback">
@@ -117,5 +118,28 @@ export function Lobby() {
         </Popover>
       )}
     </div>
+  );
+}
+
+/**
+ * What Omni Card is, in plain words. It helps first-time visitors, and it's also the text search engines
+ * read to decide what this page is about (the rest of the lobby is a handful of buttons).
+ */
+function About() {
+  return (
+    <section className="about" aria-labelledby="about-h">
+      <h2 id="about-h">PLAY ANY CARD GAME ONLINE WITH FRIENDS</h2>
+      <p>
+        Omni Card is a virtual card table that runs in your browser. There's no rules engine: like a real
+        table, you deal, draw, play and keep score yourselves, so any game works, house rules included. It's
+        free, with no sign-up and nothing to download.
+      </p>
+      <h2>HOW IT WORKS</h2>
+      <ol>
+        <li>Create a table and send the link or room code to 1 to 7 friends.</li>
+        <li>Everyone picks a seat and sees the table from their own chair.</li>
+        <li>Deal, draw, drag cards into piles and spreads, and slap sticky notes on each other.</li>
+      </ol>
+    </section>
   );
 }
