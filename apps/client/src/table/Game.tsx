@@ -6,6 +6,7 @@ import { ensureAudio, setSound, SFX, soundOn, tick } from '../audio/sfx';
 import { savedPref, savePref } from '../lib/identity';
 import type { RoomClient } from '../net/RoomClient';
 import { ComposeMenu, FeedbackMenu, NoteMenu, TableMenu, ZoneMenu } from '../ui/menus';
+import { HandMenu } from '../ui/HandMenu';
 import { NotePad } from '../ui/NotePad';
 import { anchorOf, Popover, type Anchor } from '../ui/Popover';
 import { ScorePad } from '../ui/ScorePad';
@@ -85,7 +86,8 @@ type PopState =
   | { mode: 'table'; anchor: Anchor }
   | { mode: 'compose'; anchor: Anchor }
   | { mode: 'note'; id: string; anchor: Anchor }
-  | { mode: 'feedback'; anchor: Anchor };
+  | { mode: 'feedback'; anchor: Anchor }
+  | { mode: 'hand'; anchor: Anchor };
 
 const nameOf = (v: TableView, seat: number) => v.seats[seat]?.player?.name ?? `SEAT ${seat + 1}`;
 const sourceOf = (from: string): Source =>
@@ -364,7 +366,7 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
       }
       return;
     }
-    if (!play || t.closest('.zcog,.ztidy,.score,.selbar,.hint,button.plate')) return;
+    if (!play || t.closest('.zcog,.ztidy,.score,.selbar,.hint,button.plate,.handbtn')) return;
     const at = { x0: e.clientX, y0: e.clientY };
     if (t.closest('[data-grip]')) {
       e.preventDefault();
@@ -965,6 +967,19 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
               hot={hot === 'hand'}
               centersRef={handCenters}
             />
+            {canPlay && (
+              <button
+                className={`btn icon handbtn${pop?.mode === 'hand' ? ' on' : ''}`}
+                data-keeps-pop
+                aria-label="Hand options"
+                title="Hand options: sort"
+                onClick={(e) =>
+                  setPop(pop?.mode === 'hand' ? null : { mode: 'hand', anchor: anchorOf(e.currentTarget) })
+                }
+              >
+                <i className="i-hand" />
+              </button>
+            )}
           </>
         )}
         {showHint && (
@@ -1052,6 +1067,7 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
               onClose={closePop}
             />
           )}
+          {pop.mode === 'hand' && <HandMenu send={fire} onClose={closePop} cards={view.hand?.length ?? 0} />}
           {pop.mode === 'note' && popNote && (
             <NoteMenu key={popNote.id} note={popNote} send={fire} onClose={closePop} />
           )}

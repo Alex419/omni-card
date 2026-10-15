@@ -27,7 +27,9 @@ export function HandDock({ L, hand, sel, lifted, fresh, hot, centersRef }: Props
   const cw = 25 * L.hs;
   const ch = 35 * L.hs;
   const mid = (n - 1) / 2;
-  const step = n > 1 ? Math.min(cw * 0.62, (L.SW - 32 - cw) / (n - 1)) : 0;
+  // Keep clear of your name plate (bottom-left) and the hand menu button (bottom-right).
+  const side = Math.min(110, L.SW * 0.12);
+  const step = n > 1 ? Math.min(cw * 0.62, (L.SW - 2 * side - cw) / (n - 1)) : 0;
   const start = L.SW / 2 - ((n - 1) * step) / 2 - cw / 2;
   centersRef.current = hand.map((_, i) => start + i * step + cw / 2);
   return (

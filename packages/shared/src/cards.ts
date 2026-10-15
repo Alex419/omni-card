@@ -30,3 +30,28 @@ export const backFor = (cfg: { backs?: readonly number[] }, id: CardId): number 
   const d = deckOf(id);
   return cfg.backs?.[d] ?? d % BACK_COUNT;
 };
+
+/* ---------- sorting a hand ---------- */
+
+/** Ace high: 2 3 ... 10 J Q K A. */
+const RANK_ORDER = [...RANKS.slice(1), 'A'];
+/** Spades, hearts, clubs, diamonds: the colors alternate, so neighbouring suits are easy to tell apart. */
+const SUIT_ORDER = ['S', 'H', 'C', 'D'];
+
+const isJoker = (face: Face) => face === 'JR' || face === 'JB';
+const rankIndex = (face: Face) => RANK_ORDER.indexOf(face.slice(0, -1));
+const suitIndex = (face: Face) => SUIT_ORDER.indexOf(face.slice(-1));
+
+/**
+ * Order for "sort by rank" (rank, then suit) or "sort by suit" (suit, then rank). Jokers go last;
+ * equal faces from different decks keep a fixed order by deck.
+ */
+export function compareCards(a: CardId, b: CardId, by: 'rank' | 'suit'): number {
+  const fa = faceOf(a);
+  const fb = faceOf(b);
+  const ja = isJoker(fa);
+  const jb = isJoker(fb);
+  if (ja || jb) return ja && jb ? fa.localeCompare(fb) || deckOf(a) - deckOf(b) : ja ? 1 : -1;
+  const [first, second] = by === 'rank' ? [rankIndex, suitIndex] : [suitIndex, rankIndex];
+  return first(fa) - first(fb) || second(fa) - second(fb) || deckOf(a) - deckOf(b);
+}

@@ -176,3 +176,15 @@
 .hint .hint-new {
   color: var(--grey);
 }
+
+/* Hand menu button, bottom-right of the hand strip */
+.handbtn {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  z-index: 6;
+}
+.handbtn i {
+  width: 22px;
+  height: 20px;
+}

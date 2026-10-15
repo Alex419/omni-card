@@ -88,6 +88,30 @@ function speakerURL(on: boolean): string {
   return c.toDataURL();
 }
 
+/** 11x10 open hand for the hand menu button. */
+function handURL(): string {
+  const [c, x] = canvas(11, 10);
+  blit(
+    x,
+    [
+      '....#......',
+      '..#.#.#....',
+      '..#.#.#.#..',
+      '..#.#.#.#..',
+      '..#######..',
+      '#.#######..',
+      '##########.',
+      '.#########.',
+      '..#######..',
+      '...#####...',
+    ],
+    0,
+    0,
+    PAL.paper,
+  );
+  return c.toDataURL();
+}
+
 let installed = false;
 export function installSpriteSheet() {
   if (installed) return;
@@ -138,6 +162,7 @@ export function installSpriteSheet() {
   LOOKS.forEach((look, seat) => (css += `.av-${seat}{background-image:url(${personURL(look)})}`));
   css += `.i-cog{background-image:url(${cogURL()})}.i-grip{background-image:url(${gripURL()})}`;
   css += `.i-snd-on{background-image:url(${speakerURL(true)})}.i-snd-off{background-image:url(${speakerURL(false)})}`;
+  css += `.i-hand{background-image:url(${handURL()})}`;
   const el = document.createElement('style');
   el.dataset.sprites = '';
   el.textContent = css;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allCardIds } from '../src/cards';
+import { allCardIds, compareCards } from '../src/cards';
 import { applyIntent } from '../src/reducer';
 import type { GameState } from '../src/state';
 import { viewFor } from '../src/view';
@@ -479,5 +479,47 @@ describe('undo', () => {
     g = act(g, 1, { type: 'undo' }, rng).game;
     expect(g.table.score[0]).toBe(0);
     expect(g.table.hands[0]).toEqual([c, a, b]);
+  });
+});
+
+describe('sorting your hand', () => {
+  it('orders by rank (ace high, then suit) or by suit (then rank), jokers last', () => {
+    const ids = ['AS.0', 'JR.0', '2H.0', 'KD.0', '2S.1', '10C.0', '2S.0', 'JB.0'];
+    expect([...ids].sort((a, b) => compareCards(a, b, 'rank'))).toEqual([
+      '2S.0',
+      '2S.1',
+      '2H.0',
+      '10C.0',
+      'KD.0',
+      'AS.0',
+      'JB.0',
+      'JR.0',
+    ]);
+    expect([...ids].sort((a, b) => compareCards(a, b, 'suit'))).toEqual([
+      '2S.0',
+      '2S.1',
+      'AS.0',
+      '2H.0',
+      '10C.0',
+      'KD.0',
+      'JB.0',
+      'JR.0',
+    ]);
+  });
+
+  it('is private: only your hand changes, no event, nothing to undo, and it survives an undo', () => {
+    const { game, rng } = setup(2);
+    let g = act(game, 0, { type: 'deal', count: 8 }, rng).game;
+    const historyBefore = g.history.length;
+    const r = act(g, 0, { type: 'sortHand', by: 'suit' }, rng);
+    g = r.game;
+    expect(r.events).toEqual([]);
+    expect(g.history).toHaveLength(historyBefore);
+    const sorted = [...g.table.hands[0]!];
+    expect(sorted).toEqual([...sorted].sort((a, b) => compareCards(a, b, 'suit')));
+    // Undo the deal's follow-up (shuffle) and check your sorted order is kept.
+    g = act(g, 1, { type: 'shuffleZone' }, rng).game;
+    g = act(g, 1, { type: 'undo' }, rng).game;
+    expect(g.table.hands[0]).toEqual(sorted);
   });
 });

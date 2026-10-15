@@ -68,6 +68,8 @@ export const IntentSchema = z.discriminatedUnion('type', [
     to: TargetSchema,
     up: z.boolean().optional(),
   }),
+  /** Sort your own hand. Private: no event, not undoable. */
+  z.object({ type: z.literal('sortHand'), by: z.enum(['rank', 'suit']) }),
   z.object({ type: z.literal('flipCards'), from: SourceSchema, vids }),
   z.object({
     type: z.literal('moveItems'),

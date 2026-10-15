@@ -1,4 +1,4 @@
-import { allCardIds } from './cards';
+import { allCardIds, compareCards } from './cards';
 import { LIMITS, QUIPS, tableSizeFor } from './constants';
 import type { GameEvent, Sfx } from './events';
 import * as layout from './layout';
@@ -323,6 +323,12 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
         if (from.kind === 'zone' && from.id === to.id && z.layout !== 'stack') return { label: null };
       }
       return place(t, c, from, take(t, c, from, vids), to, intent.up);
+    }
+
+    case 'sortHand': {
+      // Private, like reordering your hand by dragging: no event and nothing to undo.
+      t.hands[c.seat]!.sort((a, b) => compareCards(a, b, intent.by));
+      return { label: null };
     }
 
     case 'drawCards': {
