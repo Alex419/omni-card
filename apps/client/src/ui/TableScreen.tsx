@@ -52,7 +52,7 @@ export function TableScreen({ code }: { code: string }) {
 
 function Connected({ code, name }: { code: string; name: string }) {
   const [token] = useState(playerToken);
-  const { client, status, view, error } = useRoom(code, name, token);
+  const { client, status, view, feed, error } = useRoom(code, name, token);
 
   if (status === 'failed') {
     return (
@@ -80,7 +80,7 @@ function Connected({ code, name }: { code: string; name: string }) {
   }
   return (
     <>
-      <Game client={client} view={view} code={code} />
+      <Game client={client} view={view} feed={feed} code={code} />
       {status === 'reconnecting' && <div className="banner">CONNECTION LOST. RECONNECTING...</div>}
     </>
   );

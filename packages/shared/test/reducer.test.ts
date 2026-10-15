@@ -138,7 +138,11 @@ describe('moving cards', () => {
     );
     g = r.game;
     expect(g.table.hands[1]).toContain(card);
-    expect(r.events).toContainEqual({ type: 'log', by: 0, text: 'GAVE 1 CARD TO MAYA', sfx: 'give' });
+    expect(r.events).toContainEqual(
+      expect.objectContaining({ type: 'log', by: 0, text: 'GAVE 1 CARD TO MAYA', sfx: 'give' }),
+    );
+    // A card from your hand was never public, so the feed doesn't name it.
+    expect(r.events).toContainEqual(expect.objectContaining({ feed: 'GAVE A CARD TO MAYA' }));
   });
 
   it('lands cards in a zone using the zone’s face and jitters messy piles', () => {
@@ -179,7 +183,14 @@ describe('moving cards', () => {
     g = r.game;
     const pile = g.table.zones.find((z) => z.id === 'z2')!;
     expect(pile.cards.map((c) => c.fan)).toEqual([0, 1, 2, 3, 4].map((i) => [i, 5]));
-    expect(r.events).toContainEqual({ type: 'log', by: 0, text: 'PLAYED 5 CARDS ON DISCARD', sfx: 'drop' });
+    // The toast counts the cards; the feed names them, since they all land face up and fanned.
+    expect(r.events).toContainEqual(
+      expect.objectContaining({
+        text: 'PLAYED 5 CARDS ON DISCARD',
+        feed: 'PLAYED %c',
+        cards: run.map((id) => id.split('.')[0]),
+      }),
+    );
     // The other player sees all five faces, in the order they were played.
     const seen = viewFor(g, 'p1', 0).zones.find((z) => z.id === 'z2')!.cards;
     expect(seen.map((c) => c.face)).toEqual(run.map((id) => id.split('.')[0]));
@@ -479,6 +490,59 @@ describe('undo', () => {
     g = act(g, 1, { type: 'undo' }, rng).game;
     expect(g.table.score[0]).toBe(0);
     expect(g.table.hands[0]).toEqual([c, a, b]);
+  });
+});
+
+describe('the move feed', () => {
+  it('names a card played face down only as a count, and names it once it is flipped up', () => {
+    const { game, rng } = setup(2);
+    let g = act(game, 0, { type: 'deal', count: 2 }, rng).game;
+    const [a] = g.table.hands[0]!;
+    let r = act(
+      g,
+      0,
+      {
+        type: 'moveCards',
+        from: { kind: 'hand' },
+        vids: [a!],
+        to: { kind: 'table', x: 500, y: 300 },
+        up: false,
+      },
+      rng,
+    );
+    expect(r.events[0]).toMatchObject({ feed: 'PLAYED A CARD FACE DOWN' });
+    expect(r.events[0]).not.toHaveProperty('cards');
+    g = r.game;
+    const vid = viewFor(g, 'p1', 0).loose[0]!.vid;
+    r = act(g, 1, { type: 'flipCards', from: { kind: 'loose' }, vids: [vid] }, rng);
+    expect(r.events[0]).toMatchObject({ feed: 'FLIPPED %c FACE UP', cards: [a!.split('.')[0]] });
+  });
+
+  it('names a face-up card taken from the discard, but not one drawn from the deck', () => {
+    const { game, rng } = setup(2);
+    let g = act(game, 0, { type: 'deal', count: 1 }, rng).game;
+    const [a] = g.table.hands[0]!;
+    g = act(
+      g,
+      0,
+      {
+        type: 'moveCards',
+        from: { kind: 'hand' },
+        vids: [a!],
+        to: { kind: 'zone', id: 'z2', x: 600, y: 300 },
+      },
+      rng,
+    ).game;
+    let r = act(
+      g,
+      1,
+      { type: 'moveCards', from: { kind: 'zone', id: 'z2' }, vids: [a!], to: { kind: 'hand' } },
+      rng,
+    );
+    expect(r.events[0]).toMatchObject({ feed: 'TOOK %c FROM DISCARD', cards: [a!.split('.')[0]] });
+    r = act(r.game, 1, { type: 'drawCards', id: 'z1', count: 3, to: { kind: 'hand' } }, rng);
+    expect(r.events[0]).toMatchObject({ feed: 'DREW 3 CARDS FROM DECK' });
+    expect(r.events[0]).not.toHaveProperty('cards');
   });
 });
 

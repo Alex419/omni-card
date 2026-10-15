@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { resizedConfig } from '@omni/shared';
-import type { CardView, Intent, NoteColor, NoteSpot, Source, Target, TableView } from '@omni/shared';
+import type {
+  CardView,
+  FeedEntry,
+  Intent,
+  NoteColor,
+  NoteSpot,
+  Source,
+  Target,
+  TableView,
+} from '@omni/shared';
 import { cardClass } from '../art/sheet';
 import { ensureAudio, setSound, SFX, soundOn, tick } from '../audio/sfx';
 import { savedPref, savePref } from '../lib/identity';
 import type { RoomClient } from '../net/RoomClient';
 import { ComposeMenu, FeedbackMenu, NoteMenu, TableMenu, ZoneMenu } from '../ui/menus';
+import { FeedPanel } from '../ui/FeedPanel';
 import { HandMenu } from '../ui/HandMenu';
 import { NotePad } from '../ui/NotePad';
 import { anchorOf, Popover, type Anchor } from '../ui/Popover';
@@ -100,7 +110,17 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 /** Holding the pointer still on a pile adds one more card to the grab this often. */
 const HOLD_STEP_MS = 750;
 
-export function Game({ client, view, code }: { client: RoomClient; view: TableView; code: string }) {
+export function Game({
+  client,
+  view,
+  feed,
+  code,
+}: {
+  client: RoomClient;
+  view: TableView;
+  feed: FeedEntry[];
+  code: string;
+}) {
   const sceneRef = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState({ w: 0, h: 0 });
   useLayoutEffect(() => {
@@ -145,6 +165,20 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
   const [placing, setPlacing] = useState(false);
   const [showScore, setShowScore] = useState(false);
   const [showHint, setShowHint] = useState(() => savedPref('hint') !== 'off');
+  // The feed starts open where there's room for it beside the table.
+  const [showFeed, setShowFeed] = useState(
+    () => (savedPref('feed') ?? (innerWidth >= 1000 ? 'on' : 'off')) === 'on',
+  );
+  const [seenFeed, setSeenFeed] = useState(0);
+  const lastFeed = feed.at(-1)?.id ?? 0;
+  useEffect(() => {
+    if (showFeed) setSeenFeed(lastFeed);
+  }, [showFeed, lastFeed]);
+  const unread = showFeed ? 0 : feed.filter((e) => e.id > seenFeed && e.by !== view.you.name).length;
+  const toggleFeed = (on: boolean) => {
+    setShowFeed(on);
+    savePref('feed', on ? 'on' : 'off');
+  };
   const [sound, setSoundState] = useState(soundOn());
   const [reactions, setReactions] = useState<Record<number, Reaction>>({});
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -307,7 +341,8 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
     // Anywhere along the bottom strip counts as your hand, even over your notes, at the very edge,
     // or past the bottom of the window: a quick flick downwards shouldn't miss.
     const scene = sceneRef.current!.getBoundingClientRect();
-    if (live.current.view.hand && y >= scene.bottom - live.current.L.handH) return 'hand';
+    const inScene = x >= scene.left && x <= scene.right;
+    if (live.current.view.hand && inScene && y >= scene.bottom - live.current.L.handH) return 'hand';
     if (!el || el.closest('.bar,.pad,.menotes,.selbar,.hint')) return null;
     const d = el.closest<HTMLElement>('[data-drop]');
     if (d) return d.dataset.drop ?? null;
@@ -893,7 +928,10 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
           score: showScore,
           help: showHint,
           feedback: pop?.mode === 'feedback',
+          feed: showFeed,
         }}
+        unread={unread}
+        onFeed={() => toggleFeed(!showFeed)}
         sound={sound}
         onTable={(el) => setPop(pop?.mode === 'table' ? null : { mode: 'table', anchor: anchorOf(el) })}
         onZone={() => {
@@ -923,111 +961,124 @@ export function Game({ client, view, code }: { client: RoomClient; view: TableVi
           setPop(pop?.mode === 'feedback' ? null : { mode: 'feedback', anchor: anchorOf(el) })
         }
       />
-      <main ref={sceneRef} className={`scene${placing ? ' placing' : ''}`} onPointerDown={onPointerDown}>
-        {scene.w > 0 && (
-          <>
-            <SeatsLayer
-              L={L}
-              m={m}
-              notes={shown.notes}
-              reactions={reactions}
-              hot={hot}
-              canSit={!canPlay}
-              onSit={(s) => client.sit(s)}
-              fresh={fresh}
-            />
-            <Plane
-              L={L}
-              m={m}
-              zones={shown.zones}
-              loose={shown.loose}
-              notes={shown.notes}
-              tsel={tsel}
-              overrides={overrides.current}
-              lifted={lifted}
-              moving={d?.kind === 'group' && d.moved}
-              fresh={fresh}
-              hot={hot}
-              shuffling={shuffling}
-              openZone={pop?.mode === 'zone' ? pop.id : null}
-              canPlay={canPlay}
-              onCog={(id, el) =>
-                setPop(
-                  pop?.mode === 'zone' && pop.id === id ? null : { mode: 'zone', id, anchor: anchorOf(el) },
-                )
-              }
-              onTidy={(id) => fire({ type: 'tidyZone', id })}
-            />
-            <HandDock
-              L={L}
-              hand={view.hand}
-              sel={sel}
-              lifted={lifted}
-              fresh={fresh}
-              hot={hot === 'hand'}
-              centersRef={handCenters}
-            />
-            {canPlay && (
-              <button
-                className={`btn icon handbtn${pop?.mode === 'hand' ? ' on' : ''}`}
-                data-keeps-pop
-                aria-label="Hand options"
-                title="Hand options: sort"
-                onClick={(e) =>
-                  setPop(pop?.mode === 'hand' ? null : { mode: 'hand', anchor: anchorOf(e.currentTarget) })
+      <div className="stage">
+        <main ref={sceneRef} className={`scene${placing ? ' placing' : ''}`} onPointerDown={onPointerDown}>
+          {scene.w > 0 && (
+            <>
+              <SeatsLayer
+                L={L}
+                m={m}
+                notes={shown.notes}
+                reactions={reactions}
+                hot={hot}
+                canSit={!canPlay}
+                onSit={(s) => client.sit(s)}
+                fresh={fresh}
+              />
+              <Plane
+                L={L}
+                m={m}
+                zones={shown.zones}
+                loose={shown.loose}
+                notes={shown.notes}
+                tsel={tsel}
+                overrides={overrides.current}
+                lifted={lifted}
+                moving={d?.kind === 'group' && d.moved}
+                fresh={fresh}
+                hot={hot}
+                shuffling={shuffling}
+                openZone={pop?.mode === 'zone' ? pop.id : null}
+                canPlay={canPlay}
+                onCog={(id, el) =>
+                  setPop(
+                    pop?.mode === 'zone' && pop.id === id ? null : { mode: 'zone', id, anchor: anchorOf(el) },
+                  )
                 }
+                onTidy={(id) => fire({ type: 'tidyZone', id })}
+              />
+              <HandDock
+                L={L}
+                hand={view.hand}
+                sel={sel}
+                lifted={lifted}
+                fresh={fresh}
+                hot={hot === 'hand'}
+                centersRef={handCenters}
+              />
+              {canPlay && (
+                <button
+                  className={`btn icon handbtn${pop?.mode === 'hand' ? ' on' : ''}`}
+                  data-keeps-pop
+                  aria-label="Hand options"
+                  title="Hand options: sort"
+                  onClick={(e) =>
+                    setPop(pop?.mode === 'hand' ? null : { mode: 'hand', anchor: anchorOf(e.currentTarget) })
+                  }
+                >
+                  <i className="i-hand" />
+                </button>
+              )}
+            </>
+          )}
+          {showHint && (
+            <div className="hint">
+              <button
+                aria-label="Hide tips"
+                onClick={() => {
+                  setShowHint(false);
+                  savePref('hint', 'off');
+                }}
               >
-                <i className="i-hand" />
+                X
               </button>
-            )}
-          </>
-        )}
-        {showHint && (
-          <div className="hint">
-            <button
-              aria-label="Hide tips"
-              onClick={() => {
-                setShowHint(false);
-                savePref('hint', 'off');
-              }}
-            >
-              X
-            </button>
-            <em>DRAG</em> cards anywhere. <em>CLICK</em> a table card to flip it. Press <em>F</em> while
-            dragging to flip. <em>DRAG ON EMPTY FELT</em> to box-select; <em>SHIFT+CLICK</em> adds. The{' '}
-            <em>COG</em> on a zone opens its settings. Drop cards on a friend to give them. Write a
-            <em> STICKY NOTE</em> and slap it on someone. <em>ROOM</em> copies the invite link.
-            <span className="hint-new">
-              <em>HOLD</em> on a pile to count up cards, then drag them all at once. Type in the box next to{' '}
-              <em>DEAL</em> to set how many cards each player gets. Drop anywhere along the bottom to take
-              cards into your hand.
-            </span>
-            <span className="hint-fb">
-              Found a bug or have an idea? Tap <em>FEEDBACK</em>. I'd appreciate hearing what to improve and
-              what you enjoy!
-            </span>
+              <em>DRAG</em> cards anywhere. <em>CLICK</em> a table card to flip it. Press <em>F</em> while
+              dragging to flip. <em>DRAG ON EMPTY FELT</em> to box-select; <em>SHIFT+CLICK</em> adds. The{' '}
+              <em>COG</em> on a zone opens its settings. Drop cards on a friend to give them. Write a
+              <em> STICKY NOTE</em> and slap it on someone. <em>ROOM</em> copies the invite link.
+              <span className="hint-new">
+                <em>HOLD</em> on a pile to count up cards, then drag them all at once. Type in the box next to{' '}
+                <em>DEAL</em> to set how many cards each player gets. Drop anywhere along the bottom to take
+                cards into your hand.
+              </span>
+              <span className="hint-fb">
+                Found a bug or have an idea? Tap <em>FEEDBACK</em>. I'd appreciate hearing what to improve and
+                what you enjoy!
+              </span>
+            </div>
+          )}
+          {canPlay && (
+            <NotePad pad={pad} compColor={compColor} mine={myNotes} fresh={fresh} onOpen={openCompose} />
+          )}
+          <div className="me">
+            {view.you.name} {view.hand ? <b>{view.hand.length}</b> : <b>WATCHING</b>}
           </div>
-        )}
-        {canPlay && (
-          <NotePad pad={pad} compColor={compColor} mine={myNotes} fresh={fresh} onOpen={openCompose} />
-        )}
-        <div className="me">
-          {view.you.name} {view.hand ? <b>{view.hand.length}</b> : <b>WATCHING</b>}
-        </div>
-        {tsel.size > 0 && <SelBar count={tsel.size} cards={selCards} onAction={selAction} />}
-        {d?.kind === 'marquee' && d.rect && (
-          <div className="mq" style={{ left: d.rect.x, top: d.rect.y, width: d.rect.w, height: d.rect.h }} />
-        )}
-        <Toast toast={toast} />
-        {showScore && (
-          <ScorePad
-            seats={view.seats}
-            canPlay={canPlay}
-            onScore={(s, delta) => fire({ type: 'score', seat: s, delta })}
-            onClose={() => setShowScore(false)}
+          {tsel.size > 0 && <SelBar count={tsel.size} cards={selCards} onAction={selAction} />}
+          {d?.kind === 'marquee' && d.rect && (
+            <div
+              className="mq"
+              style={{ left: d.rect.x, top: d.rect.y, width: d.rect.w, height: d.rect.h }}
+            />
+          )}
+          <Toast toast={toast} />
+          {showScore && (
+            <ScorePad
+              seats={view.seats}
+              canPlay={canPlay}
+              onScore={(s, delta) => fire({ type: 'score', seat: s, delta })}
+              onClose={() => setShowScore(false)}
+            />
+          )}
+        </main>
+        {showFeed && (
+          <FeedPanel
+            feed={feed}
+            me={view.you.name}
+            onChat={(t) => client.chat(t)}
+            onClose={() => toggleFeed(false)}
           />
         )}
-      </main>
+      </div>
 
       {pop && (
         <Popover anchor={pop.anchor} onClose={closePop} label={pop.mode}>

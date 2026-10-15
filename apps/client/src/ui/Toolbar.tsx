@@ -10,7 +10,9 @@ interface Props {
   dealN: number;
   setDealN: (n: number) => void;
   placing: boolean;
-  open: { table: boolean; score: boolean; help: boolean; feedback: boolean };
+  open: { table: boolean; score: boolean; help: boolean; feedback: boolean; feed: boolean };
+  /** Feed lines from others since you last had the feed open. */
+  unread: number;
   sound: boolean;
   onTable: (el: HTMLElement) => void;
   onZone: () => void;
@@ -23,6 +25,7 @@ interface Props {
   onSound: () => void;
   onInvite: () => void;
   onFeedback: (el: HTMLElement) => void;
+  onFeed: () => void;
 }
 
 /** One toolbar entry: how it looks in the bar and how it appears in the MORE menu. */
@@ -48,6 +51,16 @@ export function Toolbar(p: Props) {
     ? `Undo ${p.view.undo.by}'s ${p.view.undo.label} (Ctrl+Z)`
     : 'Nothing to undo';
   const soundLabel = p.sound ? 'Sound on' : 'Sound off';
+  const feedLabel = (
+    <>
+      FEED
+      {p.unread > 0 && (
+        <span className="unread" aria-label={`${p.unread} new`}>
+          {p.unread > 99 ? '99+' : p.unread}
+        </span>
+      )}
+    </>
+  );
   const dealGroup = (
     <div className="deal">
       <button className="btn sq" aria-label="Deal fewer" onClick={() => p.setDealN(Math.max(1, p.dealN - 1))}>
@@ -129,6 +142,13 @@ export function Toolbar(p: Props) {
         ] satisfies Item[])
       : []),
     {
+      id: 'feed',
+      priority: 75,
+      side: 'left',
+      bar: btn(feedLabel, p.onFeed, { on: p.open.feed, title: 'Moves and chat' }),
+      menu: () => btn(feedLabel, p.onFeed, { on: p.open.feed }),
+    },
+    {
       id: 'score',
       priority: 20,
       side: 'left',
@@ -200,7 +220,7 @@ export function Toolbar(p: Props) {
   const [menu, setMenu] = useState<Anchor | null>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
   // A string that changes whenever an item's width could change, so we re-measure.
-  const shapeKey = `${p.canPlay}|${p.dealN}|${p.code}|${p.sound}`;
+  const shapeKey = `${p.canPlay}|${p.dealN}|${p.code}|${p.sound}|${Math.min(p.unread, 100).toString().length * Math.sign(p.unread)}`;
 
   useLayoutEffect(() => {
     const bar = barRef.current;

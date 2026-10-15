@@ -1,4 +1,4 @@
-import { allCardIds, compareCards } from './cards';
+import { allCardIds, compareCards, faceOf, type Face } from './cards';
 import { LIMITS, QUIPS, tableSizeFor } from './constants';
 import type { GameEvent, Sfx } from './events';
 import * as layout from './layout';
@@ -102,8 +102,33 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 'S'}`;
 const cleanText = (s: string, max: number) => s.toUpperCase().replace(/\s+/g, ' ').trim().slice(0, max);
 
-function log(c: RunCtx, text: string, sfx: Sfx, zone?: string) {
-  c.events.push(zone ? { type: 'log', by: c.seat, text, sfx, zone } : { type: 'log', by: c.seat, text, sfx });
+interface LogExtra {
+  /** A zone to animate (shuffle). */
+  zone?: string;
+  /** The feed line, when it isn't the same as the toast `text`. */
+  feed?: string;
+  cards?: Face[];
+}
+
+function log(c: RunCtx, text: string, sfx: Sfx, extra: LogExtra = {}) {
+  const e: GameEvent = { type: 'log', by: c.seat, text, sfx };
+  if (extra.zone) e.zone = extra.zone;
+  if (extra.feed !== undefined) e.feed = extra.feed;
+  if (extra.cards?.length) e.cards = extra.cards;
+  c.events.push(e);
+}
+
+/**
+ * Feed wording for cards that moved: names the ones everyone could see (`pub`), counts the rest.
+ * "PLAYED %c", "PLAYED 2 CARDS FACE DOWN", "TOOK %c AND A CARD FROM DECK".
+ */
+function describe(verb: string, cards: Card[], pub: boolean[], faceDown: boolean, tail = ''): LogExtra {
+  const shown = cards.filter((_, i) => pub[i]).map((x) => faceOf(x.id));
+  const hidden = cards.length - shown.length;
+  const some = hidden === 1 ? 'A CARD' : `${hidden} CARDS`;
+  const hid = faceDown ? `${some} FACE DOWN` : some;
+  const what = !shown.length ? hid : hidden ? `%c AND ${hid}` : '%c';
+  return { feed: `${verb} ${what}${tail}`, cards: shown };
 }
 
 function seatName(c: RunCtx, seat: number): string {
@@ -136,7 +161,7 @@ const jitter = (rng: Rng, bx = 0, by = 0): Jitter => [
  * vids resolve exactly the way viewFor produced them for this player, so a client can only
  * grab cards it was actually shown, and guessing a real id for a hidden card finds nothing.
  */
-function take(t: TableState, c: RunCtx, from: Source, vids: string[]): Card[] {
+function take(t: TableState, c: RunCtx, from: Source, vids: string[], seen: boolean[] = []): Card[] {
   const want = new Set(vids);
   if (want.size !== vids.length) reject('DUPLICATE CARDS');
   let out: Card[];
@@ -147,16 +172,19 @@ function take(t: TableState, c: RunCtx, from: Source, vids: string[]): Card[] {
     t.hands[c.seat] = hand.filter((id) => !want.has(id));
     // Leaving a hand re-rolls the tag: nobody can tell which card of the hand this was.
     out = ids.map((id) => ({ id, up: true, tag: newTag(c.rng), j: null }));
+    seen.push(...ids.map(() => false));
   } else if (from.kind === 'loose') {
     const hit = t.loose.filter((l) => want.has(looseVid(l)));
     if (hit.length !== want.size) reject('THOSE CARDS MOVED');
     t.loose = t.loose.filter((l) => !hit.includes(l));
     out = hit.map((l) => ({ id: l.id, up: l.up, tag: l.tag, j: null }));
+    seen.push(...hit.map((l) => l.up));
   } else {
     const z = zoneById(t, from.id);
     const idx = shownIndexes(z, want);
     if (idx.length !== want.size) reject('THOSE CARDS MOVED');
     out = idx.map((i) => z.cards[i]!);
+    seen.push(...idx.map((i) => zoneCardVisible(z, i)));
     z.cards = z.cards.filter((_, i) => !idx.includes(i));
   }
   return out;
@@ -262,7 +290,7 @@ function trimNotes(t: TableState) {
 
 function noteStuck(c: RunCtx, at: NoteSpot) {
   if (at.kind !== 'seat') {
-    log(c, '', 'stick');
+    log(c, '', 'stick', { feed: 'STUCK A NOTE ON THE TABLE' });
     return;
   }
   if (at.seat !== c.seat)
@@ -280,23 +308,59 @@ function targetLabel(to: Target, n: number): string {
   return `MOVE ${plural(n, 'CARD')}`;
 }
 
-/** Puts cards that were just taken somewhere: your hand, a friend's hand, a zone or the table. */
-function place(t: TableState, c: RunCtx, from: Source, cards: Card[], to: Target, up?: boolean): Outcome {
+/**
+ * Puts cards that were just taken somewhere: your hand, a friend's hand, a zone or the table.
+ * `seen[i]` says whether everyone could see card i where it came from; the feed may name a card
+ * only if everyone could see it before it moved or can see it where it lands.
+ */
+function place(
+  t: TableState,
+  c: RunCtx,
+  from: Source,
+  cards: Card[],
+  to: Target,
+  up: boolean | undefined,
+  seen: boolean[],
+  verb = 'TOOK',
+): Outcome {
   const n = cards.length;
-  if (to.kind === 'hand') {
+  const src = from.kind === 'zone' ? ` FROM ${zoneById(t, from.id).name}` : ' FROM THE TABLE';
+  const took = () => (from.kind === 'hand' ? {} : describe(verb, cards, seen, false, src));
+  if (to.kind === 'hand' || (to.kind === 'seat' && to.seat === c.seat)) {
     t.hands[c.seat]!.push(...cards.map((x) => x.id));
-    log(c, '', 'drop');
+    log(c, '', 'drop', took());
   } else if (to.kind === 'seat') {
     t.hands[to.seat]!.push(...cards.map((x) => x.id));
-    log(c, to.seat === c.seat ? '' : `GAVE ${plural(n, 'CARD')} TO ${seatName(c, to.seat)}`, 'give');
+    const name = seatName(c, to.seat);
+    log(
+      c,
+      `GAVE ${plural(n, 'CARD')} TO ${name}`,
+      'give',
+      describe('GAVE', cards, seen, false, ` TO ${name}`),
+    );
   } else if (to.kind === 'zone') {
     const z = zoneById(t, to.id);
     intoZone(t, c, z, cards, to.x, to.y);
+    const pub = cards.map((_, k) => seen[k] || zoneCardVisible(z, z.cards.length - n + k));
+    const feed =
+      from.kind === 'hand'
+        ? describe('PLAYED', cards, pub, true)
+        : from.kind === 'zone' && from.id === z.id
+          ? {}
+          : describe('MOVED', cards, pub, false, ` TO ${z.name}`);
     // Playing several cards from your hand is worth announcing: others should look.
-    log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS ON ${z.name}` : '', 'drop');
+    log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS ON ${z.name}` : '', 'drop', feed);
   } else {
     onTable(t, c, cards, to.x, to.y, up);
-    log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS` : '', 'drop');
+    const pub = t.loose.slice(-n).map((l, k) => seen[k] || l.up);
+    // Sliding a loose card along the felt isn't news.
+    const feed =
+      from.kind === 'hand'
+        ? describe('PLAYED', cards, pub, true)
+        : from.kind === 'zone'
+          ? describe('MOVED', cards, pub, false, ' TO THE TABLE')
+          : {};
+    log(c, from.kind === 'hand' && n > 1 ? `PLAYED ${n} CARDS` : '', 'drop', feed);
   }
   return { label: targetLabel(to, n) };
 }
@@ -322,7 +386,9 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
         const z = zoneById(t, to.id);
         if (from.kind === 'zone' && from.id === to.id && z.layout !== 'stack') return { label: null };
       }
-      return place(t, c, from, take(t, c, from, vids), to, intent.up);
+      const seen: boolean[] = [];
+      const cards = take(t, c, from, vids, seen);
+      return place(t, c, from, cards, to, intent.up, seen);
     }
 
     case 'sortHand': {
@@ -340,32 +406,50 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
       if (intent.to.kind === 'zone') zoneById(t, intent.to.id);
       if (!z.cards.length) reject('THAT PILE IS EMPTY');
       const n = Math.min(intent.count, z.cards.length);
+      const top = z.cards.length - n;
+      const seen = z.cards
+        .map((_, i) => zoneCardVisible(z, i))
+        .slice(top)
+        .reverse();
       // Top card first, the same order as drawing them one at a time.
-      const cards = z.cards.splice(z.cards.length - n, n).reverse();
+      const cards = z.cards.splice(top, n).reverse();
       if (intent.to.kind === 'hand' && n > 1) {
         // Drawing a handful is public at a real table too.
         t.hands[c.seat]!.push(...cards.map((x) => x.id));
-        log(c, `DREW ${n} CARDS FROM ${z.name}`, 'drop');
+        log(
+          c,
+          `DREW ${n} CARDS FROM ${z.name}`,
+          'drop',
+          describe('DREW', cards, seen, false, ` FROM ${z.name}`),
+        );
         return { label: targetLabel(intent.to, n) };
       }
-      return place(t, c, { kind: 'zone', id: z.id }, cards, intent.to, intent.up);
+      return place(t, c, { kind: 'zone', id: z.id }, cards, intent.to, intent.up, seen, 'DREW');
     }
 
     case 'flipCards': {
       const { from, vids } = intent;
       const want = new Set(vids);
       if (from.kind === 'hand') reject('FLIP CARDS ON THE TABLE');
+      // A flip shows a card either before or after it (unless it's buried in a neat pile).
+      let flipped: (Card | LooseCard)[];
+      let pub: boolean[];
       if (from.kind === 'loose') {
-        const hit = t.loose.filter((l) => want.has(looseVid(l)));
-        if (hit.length !== want.size) reject('THOSE CARDS MOVED');
-        for (const l of hit) l.up = !l.up;
+        flipped = t.loose.filter((l) => want.has(looseVid(l)));
+        if (flipped.length !== want.size) reject('THOSE CARDS MOVED');
+        for (const l of flipped) l.up = !l.up;
+        pub = flipped.map(() => true);
       } else {
         const z = zoneById(t, from.id);
         const idx = shownIndexes(z, want);
         if (idx.length !== want.size) reject('THOSE CARDS MOVED');
+        const before = idx.map((i) => zoneCardVisible(z, i));
         for (const i of idx) z.cards[i]!.up = !z.cards[i]!.up;
+        flipped = idx.map((i) => z.cards[i]!);
+        pub = idx.map((i, k) => before[k] || zoneCardVisible(z, i));
       }
-      log(c, '', 'flip');
+      const dir = flipped.every((x) => x.up) ? ' FACE UP' : flipped.every((x) => !x.up) ? ' FACE DOWN' : '';
+      log(c, '', 'flip', describe('FLIPPED', flipped, pub, false, dir));
       return { label: `FLIP ${plural(vids.length, 'CARD')}` };
     }
 
@@ -435,7 +519,7 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
       [z.x, z.y] = clampZone(t, z, intent.x, intent.y);
       t.zones.push(z);
       c.events.push({ type: 'zoneCreated', by: c.seat, id: z.id });
-      log(c, '', 'drop');
+      log(c, '', 'drop', { feed: `ADDED ZONE ${z.name}` });
       return { label: 'NEW ZONE' };
     }
 
@@ -448,7 +532,7 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
       if (intent.face !== undefined) {
         z.face = intent.face;
         for (const card of z.cards) card.up = z.face === 'up';
-        log(c, '', 'flip');
+        log(c, '', 'flip', { feed: `TURNED ${z.name} FACE ${z.face === 'up' ? 'UP' : 'DOWN'}` });
       }
       if (intent.layout !== undefined) {
         z.layout = intent.layout;
@@ -462,14 +546,14 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
         if (intent.deck) for (const o of t.zones) o.deck = false;
         z.deck = intent.deck;
       }
-      if (intent.face === undefined) log(c, '', 'deal');
+      if (intent.face === undefined) log(c, '', 'deal', { feed: `CHANGED ${z.name} SETTINGS` });
       return { label: 'ZONE SETTINGS' };
     }
 
     case 'tidyZone': {
       const z = zoneById(t, intent.id);
       for (const card of z.cards) [card.j, card.fan] = [null, null];
-      log(c, '', 'tidy');
+      log(c, '', 'tidy', { feed: `TIDIED ${z.name}` });
       return { label: `TIDY ${z.name}` };
     }
 
@@ -485,7 +569,7 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
         card.fan = null;
         card.tag = newTag(c.rng);
       }
-      log(c, `SHUFFLED ${z.name}`, 'shuffle', z.id);
+      log(c, `SHUFFLED ${z.name}`, 'shuffle', { zone: z.id });
       return { label: `SHUFFLE ${z.name}` };
     }
 
@@ -590,13 +674,13 @@ function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx
 
     case 'setCardSize': {
       t.cfg.size = intent.size;
-      log(c, '', 'deal');
+      log(c, '', 'deal', { feed: 'CHANGED THE CARD SIZE' });
       return { label: 'CARD SIZE' };
     }
 
     case 'resizeTable': {
       resize(t, intent.tw, intent.th);
-      log(c, '', 'drop');
+      log(c, '', 'drop', { feed: 'RESIZED THE TABLE' });
       return { label: 'RESIZE TABLE' };
     }
 

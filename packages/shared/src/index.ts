@@ -1,6 +1,7 @@
 export * from './cards';
 export * from './constants';
 export * from './events';
+export * from './feed';
 export * from './geometry';
 export * from './layout';
 // Types only: the zod schemas themselves live behind '@omni/shared/schemas' so the browser bundle

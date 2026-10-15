@@ -1,5 +1,10 @@
 import {
   applyIntent,
+  cleanChat,
+  FEED,
+  feedFromEvents,
+  type FeedEntry,
+  type NewFeedEntry,
   LIMITS,
   MAX_SEATS,
   newGame,
@@ -13,6 +18,7 @@ import {
   type ServerMessage,
 } from '@omni/shared';
 import type { Analytics } from './analytics/analytics';
+import { RateLimiter } from './rateLimit';
 import { randomId } from './rng';
 
 /** Anything we can send messages to. A WebSocket in production, a fake in tests. */
@@ -53,6 +59,11 @@ export class Room {
   lastActive: number;
   private tokens = new Map<string, string>(); // secret token -> player id
   private peers = new Map<Peer, string>(); // peer -> player id
+  /** The move feed and chat, oldest first (see packages/shared/src/feed.ts). */
+  private feed: FeedEntry[] = [];
+  private feedSeq = 0;
+  /** Chat flood guard, per player: a burst of 5, then one message a second. */
+  private chatLimit = new RateLimiter(5, 1);
   /** Running totals reported when the room ends. */
   private stats = { createdAt: 0, peakSeated: 0, players: 0, actions: 0, started: false, ended: false };
 
@@ -98,6 +109,8 @@ export class Room {
     this.peers.set(peer, player.id);
     this.notePeak();
     peer.send({ t: 'welcome', room: this.code, playerId: player.id });
+    // The recent feed, so a newcomer (or a refreshed tab) can catch up on what happened.
+    peer.send({ t: 'feed', entries: this.feed.slice(-FEED.send), reset: true });
     this.broadcast([]);
     return this.player(player.id)!;
   }
@@ -184,14 +197,46 @@ export class Room {
     });
   }
 
+  /** A chat line from a player (seated or watching). Returns an error message for the sender, or null. */
+  chat(peer: Peer, raw: string): string | null {
+    const id = this.peers.get(peer);
+    if (!id) return 'JOIN FIRST';
+    const text = cleanChat(raw);
+    if (!text) return null;
+    if (!this.chatLimit.allow(id, this.now())) return 'SLOW DOWN A LITTLE';
+    const me = this.player(id)!;
+    this.lastActive = this.now();
+    this.sendFeed(this.addFeed([{ kind: 'chat', by: me.name, seat: me.seat, text }]));
+    return null;
+  }
+
   /** Send every peer its own redacted view. Redaction happens per player, never per room. */
   broadcast(events: GameEvent[]) {
     const all = [...this.pending, ...events];
     this.pending = [];
     const now = this.now();
     this.lastActive = now;
+    const lines = this.addFeed(feedFromEvents(all, (seat) => this.nameAt(seat)));
     for (const [peer, id] of this.peers)
       peer.send({ t: 'view', view: viewFor(this.game, id, now), events: all });
+    this.sendFeed(lines);
+  }
+
+  private addFeed(lines: NewFeedEntry[]): FeedEntry[] {
+    const at = this.now();
+    const added = lines.map((l) => ({ ...l, id: ++this.feedSeq, at }));
+    this.feed = [...this.feed, ...added].slice(-FEED.keep);
+    return added;
+  }
+
+  /** The feed is public: everyone at the table, seated or watching, gets the same lines. */
+  private sendFeed(entries: FeedEntry[]) {
+    if (!entries.length) return;
+    for (const peer of this.peers.keys()) peer.send({ t: 'feed', entries });
+  }
+
+  private nameAt(seat: number) {
+    return this.game.players.find((p) => p.seat === seat)?.name ?? `SEAT ${seat + 1}`;
   }
 
   /** Room news (joins, leaves) queued to go out with the next broadcast. */

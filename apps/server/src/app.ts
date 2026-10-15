@@ -136,7 +136,10 @@ export function createApp(config: Config, rng: Rng) {
         const err = room.sit(peer, msg.seat);
         if (err) peer.send({ t: 'error', code: 'seat-taken', message: err });
       } else if (msg.t === 'stand') room.stand(peer);
-      else {
+      else if (msg.t === 'chat') {
+        const err = room.chat(peer, msg.text);
+        if (err) peer.send({ t: 'error', code: 'bad-message', message: err });
+      } else {
         const err = room.intent(peer, msg.intent);
         peer.send(err ? { t: 'ack', id: msg.id, ok: false, error: err } : { t: 'ack', id: msg.id, ok: true });
       }

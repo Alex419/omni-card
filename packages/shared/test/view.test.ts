@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { faceOf } from '../src/cards';
+import type { GameEvent } from '../src/events';
 import type { Intent } from '../src/protocol';
 import { applyIntent } from '../src/reducer';
 import { mulberry32, pick, type Rng } from '../src/rng';
@@ -291,11 +292,30 @@ function randomIntent(game: GameState, seat: number, rng: Rng): Intent {
     () => (rng() < 0.05 ? { type: 'collect' } : null),
     () => (rng() < 0.1 ? { type: 'setBacks', backs: [Math.floor(rng() * 4), Math.floor(rng() * 4)] } : null),
     () => (rng() < 0.03 ? { type: 'setDecks', decks: 1 + Math.floor(rng() * 2), jokers: rng() < 0.5 } : null),
+    () => ({ type: 'sortHand', by: rng() < 0.5 ? 'rank' : 'suit' }),
+    () =>
+      zone?.cards.length
+        ? { type: 'drawCards', id: zone.id, count: 1 + Math.floor(rng() * 3), to: { kind: 'hand' } }
+        : null,
     () => ({ type: 'undo' }),
   ];
   for (;;) {
     const intent = pick(rng, options)();
     if (intent) return intent;
+  }
+}
+
+/**
+ * Events go to everyone, so the feed may only name a card that everyone could see just before the
+ * intent or can see just after it (a spectator's view is exactly "what everyone can see").
+ */
+function assertFeedPublic(before: GameState, after: GameState, events: GameEvent[]) {
+  const pub = new Set([...truthFor(before, null).visible, ...truthFor(after, null).visible].map(faceOf));
+  for (const e of events) {
+    if (e.type !== 'log') continue;
+    for (const f of e.cards ?? []) expect(pub.has(f), `feed named hidden ${f}`).toBe(true);
+    // Feed strings carry faces only through `cards`; a raw id ("AS.0") must never appear.
+    expect(`${e.text} ${e.feed ?? ''}`).not.toMatch(/\b(10|[2-9AJQK])[SHDC]\b|\.\d/);
   }
 }
 
@@ -310,6 +330,7 @@ describe('redaction fuzz', () => {
       const seat = Math.floor(rng() * 4);
       const r = applyIntent(g, randomIntent(g, seat, rng), ctx(g, seat, rng));
       if (!r.ok) continue;
+      assertFeedPublic(g, r.game, r.events);
       g = r.game;
       applied++;
       for (const p of g.players) assertRedacted(g, p.id);

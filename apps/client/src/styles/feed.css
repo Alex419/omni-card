@@ -1,0 +1,147 @@
+/* The move feed + chat, docked to the right of the table */
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.feed {
+  width: 270px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-2);
+  border-left: 4px solid #000;
+  z-index: 40;
+}
+.feed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 12px;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--gold);
+  border-bottom: 3px solid #000;
+}
+.feed-head .btn {
+  font-size: 8px;
+}
+.feed-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px 12px;
+  list-style: none;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  font-size: 19px;
+  line-height: 1;
+  color: var(--grey);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.feed-list li {
+  overflow-wrap: anywhere;
+}
+.feed-empty {
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  line-height: 1.6;
+}
+.f-notice {
+  color: #8b8fa3;
+}
+.f-chat {
+  color: var(--paper);
+}
+.fname {
+  font-weight: 400;
+  color: var(--gold);
+}
+.fname.mine {
+  text-decoration: underline;
+}
+/* One color per seat, so it's easy to follow who did what */
+.fname.s0 {
+  color: #ffec27;
+}
+.fname.s1 {
+  color: #29adff;
+}
+.fname.s2 {
+  color: #ff77a8;
+}
+.fname.s3 {
+  color: #00e436;
+}
+.fname.s4 {
+  color: #ffa300;
+}
+.fname.s5 {
+  color: #c8b8ff;
+}
+.fname.s6 {
+  color: #ffccaa;
+}
+.fname.s7 {
+  color: #ff6b6b;
+}
+.fname.sx {
+  color: var(--grey);
+}
+
+/* A card named in the feed: a tiny face-up card */
+.fcard {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--paper);
+  color: #1d2b53;
+  padding: 1px 3px 0;
+  margin: 0 1px;
+  box-shadow: 1px 2px 0 #000;
+  line-height: 0.9;
+}
+.fcard.red {
+  color: #ff004d;
+}
+.fcard i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}
+.feed-say {
+  padding: 8px;
+  border-top: 3px solid #000;
+}
+.feed-say .field {
+  text-transform: none;
+  font-family: var(--font-term);
+  font-size: 19px;
+  padding: 6px 8px;
+}
+
+/* Phones: the feed floats over the table instead of squeezing it */
+@media (max-width: 700px) {
+  .feed {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(300px, 86vw);
+  }
+}
+
+/* Unread count on the FEED button */
+.btn .unread {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 4px 1px;
+  background: var(--pink);
+  color: #000;
+}

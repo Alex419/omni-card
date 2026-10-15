@@ -1,5 +1,5 @@
 import { BACK_COUNT, LOOKS, RANKS, SUITS } from '@omni/shared';
-import { backURL, blankURL, faceURL, mysteryURL } from './cards';
+import { backURL, blankURL, faceURL, mysteryURL, pipURL } from './cards';
 import { canvas, blit } from './canvas';
 import { BACKS, PAL } from './palette';
 import { personURL } from './people';
@@ -163,6 +163,8 @@ export function installSpriteSheet() {
   css += `.i-cog{background-image:url(${cogURL()})}.i-grip{background-image:url(${gripURL()})}`;
   css += `.i-snd-on{background-image:url(${speakerURL(true)})}.i-snd-off{background-image:url(${speakerURL(false)})}`;
   css += `.i-hand{background-image:url(${handURL()})}`;
+  for (const s of SUITS) css += `.pip-${s}{background-image:url(${pipURL(s)})}`;
+  css += `.pip-JR{background-image:url(${pipURL('X', true)})}.pip-JB{background-image:url(${pipURL('X')})}`;
   const el = document.createElement('style');
   el.dataset.sprites = '';
   el.textContent = css;

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { BACK_COUNT, CARD_SIZES, LIMITS, MAX_DECKS, MAX_SEATS, MIN_SEATS, NOTE_COLORS } from './constants';
 import type { GameEvent } from './events';
+import { FEED, type FeedEntry } from './feed';
 import type { TableView } from './view';
 
 /**
@@ -149,6 +150,14 @@ export const ClientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('stand') }),
   z.object({ t: z.literal('intent'), id: z.number().int(), intent: IntentSchema }),
   z.object({ t: z.literal('ping') }),
+  /** A chat line for the feed. Cleaned and length-capped again on the server (cleanChat). */
+  z.object({
+    t: z.literal('chat'),
+    text: z
+      .string()
+      .min(1)
+      .max(FEED.chatMax * 2),
+  }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -160,7 +169,9 @@ export type ServerMessage =
   | { t: 'ack'; id: number; ok: true }
   | { t: 'ack'; id: number; ok: false; error: string }
   | { t: 'error'; code: 'room-not-found' | 'room-full' | 'bad-message' | 'seat-taken'; message: string }
-  | { t: 'pong' };
+  | { t: 'pong' }
+  /** New feed lines. `reset` (on joining) means "this is the whole recent feed, replace yours". */
+  | { t: 'feed'; entries: FeedEntry[]; reset?: true };
 
 /* ---------- HTTP API ---------- */
 

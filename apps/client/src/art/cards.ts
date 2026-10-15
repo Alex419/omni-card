@@ -175,3 +175,10 @@ export function mysteryURL(): string {
   blit(x, QMARK, 9, 13, PAL.lilac);
   return c.toDataURL();
 }
+
+/** A 5x5 suit pip in the card's ink color, for naming cards in text (the feed). X is a joker. */
+export function pipURL(su: string, jokerRed = false): string {
+  const [c, x] = canvas(5, 5);
+  blit(x, SM[su]!, 0, 0, RED[su] || jokerRed ? PAL.red : PAL.ink);
+  return c.toDataURL();
+}

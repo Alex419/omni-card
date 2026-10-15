@@ -1,10 +1,20 @@
-import type { ClientMessage, GameEvent, Intent, ServerMessage, TableView } from '@omni/shared';
+import {
+  FEED,
+  type ClientMessage,
+  type FeedEntry,
+  type GameEvent,
+  type Intent,
+  type ServerMessage,
+  type TableView,
+} from '@omni/shared';
 
 export type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'failed';
 
 export interface RoomSnapshot {
   status: ConnStatus;
   view: TableView | null;
+  /** The move feed and chat, oldest first. */
+  feed: FeedEntry[];
   /** Fatal problem (unknown room, table full). */
   error: string | null;
 }
@@ -20,7 +30,7 @@ type EventListener = (events: GameEvent[], view: TableView) => void;
  */
 export class RoomClient {
   private ws: WebSocket | null = null;
-  private snap: RoomSnapshot = { status: 'connecting', view: null, error: null };
+  private snap: RoomSnapshot = { status: 'connecting', view: null, feed: [], error: null };
   private listeners = new Set<Listener>();
   private eventListeners = new Set<EventListener>();
   private pending = new Map<number, { resolve: (err: string | null) => void }>();
@@ -77,6 +87,10 @@ export class RoomClient {
   }
   stand() {
     this.raw({ t: 'stand' });
+  }
+  /** Say something in the feed. False if not connected. */
+  chat(text: string): boolean {
+    return this.raw({ t: 'chat', text });
   }
 
   private raw(msg: ClientMessage): boolean {
@@ -138,6 +152,9 @@ export class RoomClient {
           this.eventListeners.forEach((l) =>
             l([{ type: 'notice', text: msg.message, sfx: 'err' }], this.snap.view!),
           );
+        break;
+      case 'feed':
+        this.set({ feed: (msg.reset ? msg.entries : [...this.snap.feed, ...msg.entries]).slice(-FEED.keep) });
         break;
       case 'welcome':
       case 'pong':
