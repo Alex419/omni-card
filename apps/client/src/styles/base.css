@@ -350,3 +350,7 @@ textarea.field {
     transition: none !important;
   }
 }
+.pacts.col {
+  flex-direction: column;
+  align-items: stretch;
+}

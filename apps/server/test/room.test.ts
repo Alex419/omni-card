@@ -209,4 +209,18 @@ describe('Room', () => {
       'ok now',
     ]);
   });
+
+  it('ends a hand peek when either player stands up', () => {
+    const { r } = room();
+    const a = new FakePeer();
+    const b = new FakePeer();
+    r.join(a, 'alex', TOKEN_A);
+    r.join(b, 'maya', TOKEN_B);
+    r.sit(b, 1);
+    r.intent(a, { type: 'deal', count: 3 });
+    expect(r.intent(b, { type: 'showHand', seat: 0 })).toBeNull();
+    expect(a.view.peeking.map((p) => p.cards.length)).toEqual([3]);
+    r.stand(b);
+    expect(a.view.peeking).toEqual([]);
+  });
 });

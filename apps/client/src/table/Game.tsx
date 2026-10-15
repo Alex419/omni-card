@@ -18,8 +18,10 @@ import { ComposeMenu, FeedbackMenu, NoteMenu, TableMenu, ZoneMenu } from '../ui/
 import { FeedPanel } from '../ui/FeedPanel';
 import { HandMenu } from '../ui/HandMenu';
 import { NotePad } from '../ui/NotePad';
+import { PeekPanels } from '../ui/PeekPanels';
 import { anchorOf, Popover, type Anchor } from '../ui/Popover';
 import { ScorePad } from '../ui/ScorePad';
+import { SeatMenu } from '../ui/SeatMenu';
 import { SelBar } from '../ui/SelBar';
 import { Toast, useToast } from '../ui/Toast';
 import { Toolbar } from '../ui/Toolbar';
@@ -97,7 +99,8 @@ type PopState =
   | { mode: 'compose'; anchor: Anchor }
   | { mode: 'note'; id: string; anchor: Anchor }
   | { mode: 'feedback'; anchor: Anchor }
-  | { mode: 'hand'; anchor: Anchor };
+  | { mode: 'hand'; anchor: Anchor }
+  | { mode: 'seat'; seat: number; anchor: Anchor };
 
 const nameOf = (v: TableView, seat: number) => v.seats[seat]?.player?.name ?? `SEAT ${seat + 1}`;
 const sourceOf = (from: string): Source =>
@@ -343,7 +346,7 @@ export function Game({
     const scene = sceneRef.current!.getBoundingClientRect();
     const inScene = x >= scene.left && x <= scene.right;
     if (live.current.view.hand && inScene && y >= scene.bottom - live.current.L.handH) return 'hand';
-    if (!el || el.closest('.bar,.pad,.menotes,.selbar,.hint')) return null;
+    if (!el || el.closest('.bar,.pad,.menotes,.selbar,.hint,.peeks')) return null;
     const d = el.closest<HTMLElement>('[data-drop]');
     if (d) return d.dataset.drop ?? null;
     return el.closest('.plane') ? 'table' : null;
@@ -401,7 +404,7 @@ export function Game({
       }
       return;
     }
-    if (!play || t.closest('.zcog,.ztidy,.score,.selbar,.hint,button.plate,.handbtn')) return;
+    if (!play || t.closest('.zcog,.ztidy,.score,.selbar,.hint,button.plate,.handbtn,.peeks')) return;
     const at = { x0: e.clientX, y0: e.clientY };
     if (t.closest('[data-grip]')) {
       e.preventDefault();
@@ -973,6 +976,17 @@ export function Game({
                 hot={hot}
                 canSit={!canPlay}
                 onSit={(s) => client.sit(s)}
+                onSeat={
+                  canPlay
+                    ? (s, el) =>
+                        setPop(
+                          pop?.mode === 'seat' && pop.seat === s
+                            ? null
+                            : { mode: 'seat', seat: s, anchor: anchorOf(el) },
+                        )
+                    : undefined
+                }
+                peeking={new Set(view.peeking.map((p) => p.seat))}
                 fresh={fresh}
               />
               <Plane
@@ -1041,6 +1055,10 @@ export function Game({
                 <em>DEAL</em> to set how many cards each player gets. Drop anywhere along the bottom to take
                 cards into your hand.
               </span>
+              <span className="hint-new">
+                The <em>HAND</em> button (bottom right) sorts your hand. <em>CLICK A FRIEND</em> to ask to see
+                their hand or show them yours. <em>FEED</em> lists every move, with chat.
+              </span>
               <span className="hint-fb">
                 Found a bug or have an idea? Tap <em>FEEDBACK</em>. I'd appreciate hearing what to improve and
                 what you enjoy!
@@ -1053,6 +1071,7 @@ export function Game({
           <div className="me">
             {view.you.name} {view.hand ? <b>{view.hand.length}</b> : <b>WATCHING</b>}
           </div>
+          <PeekPanels view={view} send={fire} nameOf={(s) => nameOf(view, s)} />
           {tsel.size > 0 && <SelBar count={tsel.size} cards={selCards} onAction={selAction} />}
           {d?.kind === 'marquee' && d.rect && (
             <div
@@ -1118,7 +1137,23 @@ export function Game({
               onClose={closePop}
             />
           )}
-          {pop.mode === 'hand' && <HandMenu send={fire} onClose={closePop} cards={view.hand?.length ?? 0} />}
+          {pop.mode === 'seat' && (
+            <SeatMenu
+              view={view}
+              seat={pop.seat}
+              name={nameOf(view, pop.seat)}
+              send={fire}
+              onClose={closePop}
+            />
+          )}
+          {pop.mode === 'hand' && (
+            <HandMenu
+              send={fire}
+              onClose={closePop}
+              cards={view.hand?.length ?? 0}
+              shownTo={view.shownTo.map((s) => nameOf(view, s))}
+            />
+          )}
           {pop.mode === 'note' && popNote && (
             <NoteMenu key={popNote.id} note={popNote} send={fire} onClose={closePop} />
           )}

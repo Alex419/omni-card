@@ -20,6 +20,7 @@ the server makes sure nobody's browser ever receives cards they shouldn't see.
 - **Drag** cards anywhere: onto the felt, into a zone, onto a friend (gives them the card), or anywhere along the bottom of the screen (into your hand).
 - **Click** a table card to flip it; press **F** while dragging to flip it before it lands.
 - **Click** cards in your hand to select several, then drag them together; drag within your hand to reorder.
+- The **hand button** (bottom right) sorts your hand by rank or by suit (aces high).
 - **Press and hold** on a pile: the count goes up one card every 0.75 s, then drag to take that many at once.
 - **DEAL** a number of cards to every player. Use − / + or type the number in the box.
 - **SHUFFLE**, **COLLECT** (everything back to the deck) and **UNDO**. Undo works for everyone and is announced ("ALEX UNDID ...").
@@ -28,6 +29,10 @@ the server makes sure nobody's browser ever receives cards they shouldn't see.
 - **+ ZONE** places a new one. Drag a zone by its grip (top-left) or its empty outline. The **cog** (bottom-right) opens its settings: name, face up/down, stack or spread, neat or messy, mark as the deck, shuffle, flip all, delete.
 - Messy piles keep cards where they were tossed; **TIDY** squares them up. Several cards played at once fan out so everyone can read the run.
 - **Drag on empty felt** to box-select cards, zones and notes (shift+click adds); move them together, or **PILE UP** selected cards into a new zone.
+
+**Other players**
+- **FEED** (beside the table) lists every move in order ("ALEX PLAYED 7♥ 8♥", "MAYA DREW 3 CARDS FROM DECK") and has a chat box. Cards are named only if everyone could see them.
+- **Click a friend** to ask to see their hand (they choose SHOW or NO) or to show them yours. Either of you can end it at any time, and the feed tells everyone.
 
 **The table**
 - **TABLE** settings: number of seats, 1–4 decks, jokers, card size, each deck's card back (matching backs hide which deck a card came from), and table size (or drag the striped corner).

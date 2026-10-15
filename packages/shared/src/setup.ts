@@ -81,5 +81,5 @@ export function newTable(rng: Rng, overrides: Partial<TableConfig> = {}): TableS
 }
 
 export function newGame(rng: Rng, overrides: Partial<TableConfig> = {}): GameState {
-  return { table: newTable(rng, overrides), players: [], history: [] };
+  return { table: newTable(rng, overrides), players: [], history: [], peeks: [], asks: [] };
 }

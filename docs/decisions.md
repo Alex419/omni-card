@@ -499,3 +499,63 @@ HTML is the step up. Those pages are also the biggest SEO lever: they match the 
   `onrender.com` subdomain shares its reputation with every other app on Render.
 - Free-tier sleep: if Googlebot visits while the server sleeps, the page loads slowly, which counts a little against it.
 - None of this makes Google *find* the site; links and Search Console do (see the README).
+
+## 29. The move feed and chat
+
+**Decision.** A FEED panel beside the table lists every move ("ALEX PLAYED 7♥ 8♥", "MAYA DREW 3 CARDS FROM DECK")
+and chat, in one list. The server builds it; clients only display it.
+
+**Where the lines come from.** The reducer already emits public `log` events for toasts and sounds. Each one now
+also carries a feed line (`feed`, plus `cards` for faces that may be named). Toasts stay quiet (single-card plays
+don't toast), while the feed records everything that changes who holds what. `feedFromEvents()`
+(`packages/shared/src/feed.ts`) turns events into lines, and the Room keeps the last 200.
+
+**The naming rule is a redaction rule.** A card is named only if everyone could see it just before it moved, or
+can see it where it lands. Otherwise it's counted ("PLAYED A CARD FACE DOWN"). Events go to every player, so a
+mistake here would leak hidden cards to everyone. The redaction fuzz test checks every event of every random game
+against an independent oracle, and a planted bug ("name every card") fails it.
+
+**Why the feed lives in the Room, not in `GameState`.** UNDO restores table snapshots. If the feed were part of the
+state, an undo would erase the history of what happened. Instead, the undo itself is a new line.
+
+**Why it's sent incrementally.** Every move re-sends each player's whole view. Putting 100 feed lines inside each view
+would multiply traffic for no reason. So joining (or refreshing) sends the recent feed once (`{t:'feed', reset}`), and
+after that only new lines go out.
+
+**Chat** is handled by the Room, not the reducer, because it isn't a game action (nothing to undo).
+- Spectators can chat.
+- A per-player token bucket allows a burst of 5 messages, then 1 per second.
+- Control characters are stripped and messages are capped at 200 characters.
+- It's rendered as React text, so markup typed into chat shows as text instead of running.
+
+## 30. Asking to see a hand, showing yours
+
+**Decision.** Click a friend's name or sprite: ASK TO SEE THEIR HAND (they get SHOW / NO), or SHOW THEM MY HAND.
+- The owner can HIDE at any time, from the bar above their hand or from the hand menu.
+- The viewer can STOP LOOKING.
+- Every step is announced in the feed: at a real table, everyone would see you lean over.
+
+**State.** `GameState.peeks` (viewer, owner) and `GameState.asks` live beside the table, not in it. UNDO restores
+table snapshots, and an undo must never re-open a hand its owner has hidden. Peeks aren't undoable either: they're
+consent, not moves.
+
+**Redaction.** `viewFor` adds `peeking` (the faces of hands you were granted), plus `shownTo`, `asksForMe` and
+`asksFromMe`. Nothing else changes, so third players still get only counts and backs. The test oracle learned the
+rule independently ("a hand card is visible to its owner and to granted viewers"). A planted bug (show granted hands
+to everyone) fails 6 tests. A browser check also inspected a third player's raw WebSocket frames for the cards.
+
+**Seats, not people.** Hands belong to seats. If a player stands up and someone else sits down, the newcomer must not
+inherit a peek nobody granted them. `prunePeeks()` drops peeks and asks whose seats are empty, and runs whenever players
+change (Room) or the seat count changes (reducer).
+
+## 31. Hand menu and sorting
+
+**Decision.** A small hand button at the bottom right of your hand opens a menu: SORT BY RANK / BY SUIT, and who can
+see your hand (HIDE MY HAND). It's a menu so future hand options don't crowd the hand.
+
+**Sorting is server-side** (`sortHand` intent): hand order already lives on the server, so a refresh keeps it. It's
+private like dragging to reorder: no event, not undoable, and UNDO keeps your current order. Aces are high; suits go
+♠ ♥ ♣ ♦ so the colors alternate; jokers go last; equal cards from different decks keep a fixed order.
+
+**Also.** The HELP panel moved to the middle of the table. Every edge of the screen except the bottom has a seat on
+it, so the old top-left panel hid the left seat's name plate (and its SIT button) for new visitors.

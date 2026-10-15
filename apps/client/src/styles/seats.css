@@ -96,12 +96,25 @@
 }
 button.plate {
   cursor: pointer;
+}
+button.plate.sit {
   background: var(--green);
   color: #000;
   animation: wig 1.4s steps(2) infinite;
 }
-button.plate:hover {
+button.plate.sit:hover {
   background: #7dff9a;
+}
+/* A seated friend: click their name or sprite for options */
+.seat.clickable .sprite {
+  cursor: pointer;
+}
+button.plate:not(.sit):hover {
+  background: var(--ink-2);
+  outline: 2px solid var(--gold);
+}
+.plate small.peeking {
+  color: var(--green);
 }
 .seat.hot .plate {
   background: var(--gold);

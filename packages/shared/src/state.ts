@@ -111,8 +111,27 @@ export interface HistoryEntry {
   table: TableState;
 }
 
+/** Seat `viewer` may see seat `owner`'s hand: the owner agreed or offered. */
+export interface Peek {
+  viewer: number;
+  owner: number;
+}
+
+/** Seat `from` asked to see seat `to`'s hand and is waiting for an answer. */
+export interface HandAsk {
+  from: number;
+  to: number;
+  at: number;
+}
+
 export interface GameState {
   table: TableState;
   players: Player[];
   history: HistoryEntry[];
+  /**
+   * Hand peeks live beside the table, not in it: UNDO restores table snapshots, and it must never
+   * re-open a hand that its owner has since hidden.
+   */
+  peeks: Peek[];
+  asks: HandAsk[];
 }

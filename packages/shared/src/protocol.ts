@@ -69,6 +69,14 @@ export const IntentSchema = z.discriminatedUnion('type', [
     to: TargetSchema,
     up: z.boolean().optional(),
   }),
+  /** Ask the player in `seat` to let you see their hand. */
+  z.object({ type: z.literal('askHand'), seat }),
+  /** Answer the ask from the player in `seat`. */
+  z.object({ type: z.literal('answerAsk'), seat, yes: z.boolean() }),
+  /** Let the player in `seat` see your hand. */
+  z.object({ type: z.literal('showHand'), seat }),
+  /** Stop looking at `seat`'s hand (viewer), or stop showing yours to `seat` or, without a seat, to everyone (owner). */
+  z.object({ type: z.literal('endPeek'), seat: seat.optional(), role: z.enum(['viewer', 'owner']) }),
   /** Sort your own hand. Private: no event, not undoable. */
   z.object({ type: z.literal('sortHand'), by: z.enum(['rank', 'suit']) }),
   z.object({ type: z.literal('flipCards'), from: SourceSchema, vids }),

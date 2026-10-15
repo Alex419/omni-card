@@ -8,6 +8,7 @@ import {
   LIMITS,
   MAX_SEATS,
   newGame,
+  prunePeeks,
   seatIsOpen,
   viewFor,
   type GameEvent,
@@ -260,7 +261,8 @@ export class Room {
     return this.game.players.find((p) => p.id === id);
   }
   private setPlayers(players: Player[]) {
-    this.game = { ...this.game, players };
+    // Anyone standing up or leaving ends the hand peeks they were part of.
+    this.game = prunePeeks({ ...this.game, players });
   }
   private updatePlayer(id: string, patch: Partial<Player>) {
     this.setPlayers(this.game.players.map((p) => (p.id === id ? { ...p, ...patch } : p)));

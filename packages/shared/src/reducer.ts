@@ -44,10 +44,12 @@ interface Outcome {
 export function applyIntent(game: GameState, intent: Intent, ctx: Ctx): ApplyResult {
   try {
     if (intent.type === 'undo') return undo(game, ctx);
+    if (isPeekIntent(intent)) return peek(game, intent, ctx);
     const table = structuredClone(game.table);
     const events: GameEvent[] = [];
     const out = run(table, intent, { ...ctx, game, events });
-    return { ok: true, game: { ...game, table, history: record(game, out, ctx) }, events };
+    // Changing the number of seats can leave a peek pointing at a seat that no longer exists.
+    return { ok: true, game: prunePeeks({ ...game, table, history: record(game, out, ctx) }), events };
   } catch (e) {
     if (e instanceof Reject) return { ok: false, error: e.message };
     throw e;
@@ -89,6 +91,91 @@ function undo(game: GameState, ctx: Ctx): ApplyResult {
     game: { ...game, table, history: game.history.slice(0, -1) },
     events: [{ type: 'log', by: ctx.seat, text: `UNDID ${whose}${entry.label}`, sfx: 'flip' }],
   };
+}
+
+/* ---------- hand peeks: asking to see a hand, showing yours ---------- */
+
+type PeekIntent = Extract<Intent, { type: 'askHand' | 'answerAsk' | 'showHand' | 'endPeek' }>;
+const PEEK_TYPES = new Set(['askHand', 'answerAsk', 'showHand', 'endPeek']);
+const isPeekIntent = (i: Intent): i is PeekIntent => PEEK_TYPES.has(i.type);
+
+/**
+ * Peeks change who may see what, not what's on the table, so they skip the table snapshot and
+ * undo history entirely. Every change is announced: at a real table everyone would see you lean over.
+ */
+function peek(game: GameState, intent: PeekIntent, ctx: Ctx): ApplyResult {
+  const events: GameEvent[] = [];
+  const c: RunCtx = { ...ctx, game, events };
+  const me = ctx.seat;
+  let { peeks, asks } = game;
+  const occupied = (s: number) => s < game.table.cfg.seats && game.players.some((p) => p.seat === s);
+  const withSeat = (s: number | undefined): number => {
+    if (s === undefined || s === me || !occupied(s)) reject('NOBODY ELSE IS SITTING THERE');
+    return s;
+  };
+  const sees = (viewer: number, owner: number) => peeks.some((p) => p.viewer === viewer && p.owner === owner);
+  const grant = (viewer: number) => {
+    if (!sees(viewer, me)) peeks = [...peeks, { viewer, owner: me }];
+    asks = asks.filter((a) => !(a.from === viewer && a.to === me));
+  };
+
+  switch (intent.type) {
+    case 'askHand': {
+      const s = withSeat(intent.seat);
+      if (sees(me, s)) reject('YOU CAN ALREADY SEE THAT HAND');
+      asks = [...asks.filter((a) => !(a.from === me && a.to === s)), { from: me, to: s, at: ctx.now }];
+      log(c, `ASKED TO SEE ${seatName(c, s)}'S HAND`, 'huh');
+      break;
+    }
+    case 'answerAsk': {
+      const s = withSeat(intent.seat);
+      if (!asks.some((a) => a.from === s && a.to === me)) reject('THAT REQUEST IS GONE');
+      asks = asks.filter((a) => !(a.from === s && a.to === me));
+      if (intent.yes) grant(s);
+      log(
+        c,
+        intent.yes ? `LET ${seatName(c, s)} SEE THEIR HAND` : `SAID NO TO ${seatName(c, s)}`,
+        intent.yes ? 'give' : 'err',
+      );
+      break;
+    }
+    case 'showHand': {
+      const s = withSeat(intent.seat);
+      if (sees(s, me)) reject('THEY CAN ALREADY SEE YOUR HAND');
+      grant(s);
+      log(c, `LET ${seatName(c, s)} SEE THEIR HAND`, 'give');
+      break;
+    }
+    case 'endPeek': {
+      if (intent.role === 'viewer') {
+        const s = withSeat(intent.seat);
+        if (!sees(me, s)) reject('YOU WERE NOT LOOKING');
+        peeks = peeks.filter((p) => !(p.viewer === me && p.owner === s));
+        log(c, `STOPPED LOOKING AT ${seatName(c, s)}'S HAND`, 'drop');
+      } else {
+        const from = intent.seat === undefined ? null : withSeat(intent.seat);
+        const ending = peeks.filter((p) => p.owner === me && (from === null || p.viewer === from));
+        if (!ending.length) reject('NOBODY CAN SEE YOUR HAND');
+        peeks = peeks.filter((p) => !ending.includes(p));
+        log(c, from === null ? 'HID THEIR HAND' : `HID THEIR HAND FROM ${seatName(c, from)}`, 'drop');
+      }
+      break;
+    }
+  }
+  return { ok: true, game: { ...game, peeks, asks }, events };
+}
+
+/**
+ * Drop peeks and asks whose seats are empty or gone. Hands belong to seats, so if a player stands
+ * up and someone else sits down, the newcomer must not inherit a peek nobody granted them.
+ */
+export function prunePeeks(game: GameState): GameState {
+  const ok = (s: number) => s < game.table.cfg.seats && game.players.some((p) => p.seat === s);
+  const peeks = game.peeks.filter((p) => ok(p.viewer) && ok(p.owner));
+  const asks = game.asks.filter((a) => ok(a.from) && ok(a.to));
+  return peeks.length === game.peeks.length && asks.length === game.asks.length
+    ? game
+    : { ...game, peeks, asks };
 }
 
 /* ---------- helpers ---------- */
@@ -367,7 +454,7 @@ function place(
 
 /* ---------- intent handlers ---------- */
 
-function run(t: TableState, intent: Exclude<Intent, { type: 'undo' }>, c: RunCtx): Outcome {
+function run(t: TableState, intent: Exclude<Intent, { type: 'undo' } | PeekIntent>, c: RunCtx): Outcome {
   switch (intent.type) {
     case 'moveCards': {
       const { from, to, vids } = intent;

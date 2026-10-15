@@ -17,11 +17,15 @@ interface Props {
   /** Spectators get a SIT HERE button on open seats. */
   canSit: boolean;
   onSit: (seat: number) => void;
+  /** Clicking a seated friend opens their menu (ask to see their hand, show yours). */
+  onSeat?: (seat: number, el: HTMLElement) => void;
+  /** Seats whose hand you can currently see. */
+  peeking: ReadonlySet<number>;
   fresh: ReadonlySet<string>;
 }
 
 /** Everyone else at the table, drawn under the plane so the table hides their laps. */
-export function SeatsLayer({ L, m, notes, reactions, hot, canSit, onSit, fresh }: Props) {
+export function SeatsLayer({ L, m, notes, reactions, hot, canSit, onSit, onSeat, peeking, fresh }: Props) {
   const crowd = m.others.length > 5;
   const placed = m.others
     .map((g, i) => ({ g, i, pos: seatScreenPos(L, m, g, crowd) }))
@@ -39,7 +43,15 @@ export function SeatsLayer({ L, m, notes, reactions, hot, canSit, onSit, fresh }
           !p && 'empty',
           p && !p.connected && 'away',
           hot === `seat:${g.seat}` && 'hot',
+          p && onSeat && 'clickable',
         ];
+        const label = (
+          <>
+            {p ? p.name : 'OPEN'} {(p || sv.handCount > 0) && <b>{sv.handCount}</b>}
+            {p && !p.connected && <small> AWAY</small>}
+            {peeking.has(g.seat) && <small className="peeking"> SEEN</small>}
+          </>
+        );
         const style = {
           left: pos.x,
           top: pos.y,
@@ -53,21 +65,32 @@ export function SeatsLayer({ L, m, notes, reactions, hot, canSit, onSit, fresh }
             className={cls.filter(Boolean).join(' ')}
             data-drop={`seat:${g.seat}`}
             style={style}
+            onClick={(e) => {
+              // Notes on a friend have their own menu.
+              if (!p || !onSeat || (e.target as HTMLElement).closest('[data-note],button')) return;
+              onSeat(g.seat, e.currentTarget.querySelector<HTMLElement>('.plate') ?? e.currentTarget);
+            }}
           >
             {r.say && <div className="say">{r.say}</div>}
             {canSit && sv.open ? (
               <button
-                className="plate"
+                className="plate sit"
                 onClick={() => onSit(g.seat)}
                 aria-label={`Sit in seat ${g.seat + 1}`}
               >
                 SIT
               </button>
+            ) : p && onSeat ? (
+              <button
+                className="plate"
+                data-keeps-pop
+                aria-label={`${p.name}: options`}
+                onClick={(e) => onSeat(g.seat, e.currentTarget)}
+              >
+                {label}
+              </button>
             ) : (
-              <div className="plate">
-                {p ? p.name : 'OPEN'} {(p || sv.handCount > 0) && <b>{sv.handCount}</b>}
-                {p && !p.connected && <small> AWAY</small>}
-              </div>
+              <div className="plate">{label}</div>
             )}
             <div className="body">
               <div className={`sprite av-${g.seat}${r.shock ? ' shock' : ''}`} />

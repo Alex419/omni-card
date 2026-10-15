@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { faceOf } from '../src/cards';
 import type { GameEvent } from '../src/events';
 import type { Intent } from '../src/protocol';
-import { applyIntent } from '../src/reducer';
+import { applyIntent, prunePeeks } from '../src/reducer';
 import { mulberry32, pick, type Rng } from '../src/rng';
 import type { GameState } from '../src/state';
 import type { Zone } from '../src/state';
@@ -41,7 +41,9 @@ function truthFor(game: GameState, seat: number | null): Truth {
   const visible = new Set<string>();
   const hidden = new Set<string>();
   const tags = new Set<string>();
-  game.table.hands.forEach((hand, s) => hand.forEach((id) => (s === seat ? visible : hidden).add(id)));
+  // Your own hand, plus any hand whose owner let you look.
+  const mayLook = (s: number) => s === seat || game.peeks.some((p) => p.viewer === seat && p.owner === s);
+  game.table.hands.forEach((hand, s) => hand.forEach((id) => (mayLook(s) ? visible : hidden).add(id)));
   for (const l of game.table.loose) {
     if (l.up) visible.add(l.id);
     else {
@@ -63,7 +65,12 @@ function truthFor(game: GameState, seat: number | null): Truth {
 
 /** Every card-like object in a view. Other players' hands deliberately contribute nothing. */
 function cardsIn(view: TableView) {
-  return [...(view.hand ?? []), ...view.loose, ...view.zones.flatMap((z) => z.cards)];
+  return [
+    ...(view.hand ?? []),
+    ...view.peeking.flatMap((p) => p.cards),
+    ...view.loose,
+    ...view.zones.flatMap((z) => z.cards),
+  ];
 }
 
 function assertRedacted(game: GameState, playerId: string) {
@@ -215,6 +222,47 @@ describe('viewFor redaction', () => {
     expect(r.ok).toBe(false);
   });
 
+  it('shows a hand only to the player its owner let look, and only until they hide it', () => {
+    const { game, rng } = setup(3);
+    let g = act(game, 0, { type: 'deal', count: 5 }, rng).game;
+    const mayaHand = g.table.hands[1]!;
+    const leaks = (id: string) => mayaHand.some((c) => JSON.stringify(viewFor(g, id, 0)).includes(c));
+
+    // Asking reveals nothing; the owner just gets the question.
+    g = act(g, 0, { type: 'askHand', seat: 1 }, rng).game;
+    expect(viewFor(g, 'p1', 0).asksForMe).toEqual([0]);
+    expect(viewFor(g, 'p0', 0).asksFromMe).toEqual([1]);
+    expect(leaks('p0')).toBe(false);
+
+    // Yes: the asker sees exactly that hand; the third player still sees nothing.
+    g = act(g, 1, { type: 'answerAsk', seat: 0, yes: true }, rng).game;
+    expect(viewFor(g, 'p0', 0).peeking).toEqual([
+      { seat: 1, cards: mayaHand.map((id) => expect.objectContaining({ vid: id, face: faceOf(id) })) },
+    ]);
+    expect(viewFor(g, 'p1', 0).shownTo).toEqual([0]);
+    expect(leaks('p2')).toBe(false);
+    for (const p of g.players) assertRedacted(g, p.id);
+
+    // Hidden again: gone, and an UNDO of an earlier move can't bring it back.
+    g = act(g, 1, { type: 'endPeek', role: 'owner' }, rng).game;
+    expect(viewFor(g, 'p0', 0).peeking).toEqual([]);
+    expect(leaks('p0')).toBe(false);
+    g = act(g, 2, { type: 'undo' }, rng).game;
+    expect(viewFor(g, 'p0', 0).peeking).toEqual([]);
+  });
+
+  it('ends peeks when a player leaves the seat, so a newcomer there inherits nothing', () => {
+    const { game, rng } = setup(2);
+    let g = act(game, 0, { type: 'deal', count: 3 }, rng).game;
+    g = act(g, 1, { type: 'showHand', seat: 0 }, rng).game;
+    expect(viewFor(g, 'p0', 0).peeking).toHaveLength(1);
+    // p0 stands up and a new player sits in seat 0.
+    g = prunePeeks({ ...g, players: g.players.map((p) => (p.id === 'p0' ? { ...p, seat: null } : p)) });
+    g = { ...g, players: [...g.players, player(0, 9)] };
+    expect(viewFor(g, 'p9', 0).peeking).toEqual([]);
+    expect(g.peeks).toEqual([]);
+  });
+
   it('gives spectators no hand and no hand identities', () => {
     const { game, rng } = setup(2);
     const g = act(game, 0, { type: 'deal', count: 5 }, rng).game;
@@ -293,6 +341,10 @@ function randomIntent(game: GameState, seat: number, rng: Rng): Intent {
     () => (rng() < 0.1 ? { type: 'setBacks', backs: [Math.floor(rng() * 4), Math.floor(rng() * 4)] } : null),
     () => (rng() < 0.03 ? { type: 'setDecks', decks: 1 + Math.floor(rng() * 2), jokers: rng() < 0.5 } : null),
     () => ({ type: 'sortHand', by: rng() < 0.5 ? 'rank' : 'suit' }),
+    () => ({ type: 'askHand', seat: Math.floor(rng() * 4) }),
+    () => ({ type: 'answerAsk', seat: Math.floor(rng() * 4), yes: rng() < 0.7 }),
+    () => ({ type: 'showHand', seat: Math.floor(rng() * 4) }),
+    () => ({ type: 'endPeek', seat: Math.floor(rng() * 4), role: rng() < 0.5 ? 'viewer' : 'owner' }),
     () =>
       zone?.cards.length
         ? { type: 'drawCards', id: zone.id, count: 1 + Math.floor(rng() * 3), to: { kind: 'hand' } }

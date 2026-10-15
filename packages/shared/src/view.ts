@@ -82,6 +82,14 @@ export interface TableView {
   spectators: PlayerView[];
   /** The step UNDO would take back, so the button can say what it will do. */
   undo: { label: string; by: string } | null;
+  /** Hands their owners let you see. The only way another player's cards ever reach you. */
+  peeking: { seat: number; cards: CardView[] }[];
+  /** Seats that can see your hand. */
+  shownTo: number[];
+  /** Seats asking to see your hand, waiting for your answer. */
+  asksForMe: number[];
+  /** Seats you've asked, still waiting. */
+  asksFromMe: number[];
 }
 
 /* ---------- visibility, shared with the reducer so vids resolve the same way ---------- */
@@ -179,14 +187,11 @@ export function viewFor(game: GameState, playerId: string, now: number): TableVi
     });
   }
 
-  const hand =
-    mySeat === null
-      ? null
-      : (table.hands[mySeat] ?? []).map((id) => ({
-          vid: id,
-          face: faceOf(id),
-          back: backFor(table.cfg, id),
-        }));
+  const handOf = (s: number): CardView[] =>
+    (table.hands[s] ?? []).map((id) => ({ vid: id, face: faceOf(id), back: backFor(table.cfg, id) }));
+  const hand = mySeat === null ? null : handOf(mySeat);
+  // Spectators have no seat, so they can't be granted a peek (or asked for one).
+  const mine = <T>(list: T[], pick: (x: T) => boolean) => (mySeat === null ? [] : list.filter(pick));
 
   const last = game.history[game.history.length - 1];
   return {
@@ -199,5 +204,12 @@ export function viewFor(game: GameState, playerId: string, now: number): TableVi
     notes: table.notes.map((n) => ({ ...n, at: { ...n.at } })),
     spectators: players.filter((p) => p.seat === null).map(playerView),
     undo: last ? { label: last.label, by: last.by } : null,
+    peeking: mine(game.peeks, (p) => p.viewer === mySeat).map((p) => ({
+      seat: p.owner,
+      cards: handOf(p.owner),
+    })),
+    shownTo: mine(game.peeks, (p) => p.owner === mySeat).map((p) => p.viewer),
+    asksForMe: mine(game.asks, (a) => a.to === mySeat).map((a) => a.from),
+    asksFromMe: mine(game.asks, (a) => a.from === mySeat).map((a) => a.to),
   };
 }
