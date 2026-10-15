@@ -25,12 +25,26 @@ export function Popover({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const pw = el.offsetWidth;
-    const ph = el.offsetHeight;
-    let top = anchor.bottom + 12;
-    if (top + ph > innerHeight - 12) top = Math.max(12, anchor.top - ph - 12);
-    el.style.left = `${Math.max(16, Math.min(anchor.left, innerWidth - pw - 16))}px`;
-    el.style.top = `${top}px`;
+    const place = () => {
+      // The visual viewport is the part of the page you can actually see: on a phone it shrinks
+      // when the on-screen keyboard opens, and innerHeight doesn't.
+      const vh = window.visualViewport?.height ?? innerHeight;
+      el.style.maxHeight = `${vh - 24}px`;
+      const pw = el.offsetWidth;
+      const ph = el.offsetHeight;
+      let top = anchor.bottom + 12;
+      if (top + ph > vh - 12) top = Math.max(12, Math.min(anchor.top - ph - 12, vh - ph - 12));
+      el.style.left = `${Math.max(16, Math.min(anchor.left, innerWidth - pw - 16))}px`;
+      el.style.top = `${top}px`;
+    };
+    place();
+    const vv = window.visualViewport;
+    window.addEventListener('resize', place);
+    vv?.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('resize', place);
+      vv?.removeEventListener('resize', place);
+    };
   });
   useLayoutEffect(() => {
     const down = (e: PointerEvent) => {

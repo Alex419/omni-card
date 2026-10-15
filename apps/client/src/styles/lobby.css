@@ -122,3 +122,14 @@
   display: grid;
   gap: 4px;
 }
+.lobby-fb {
+  display: grid;
+  gap: 12px;
+  scroll-margin: 16px;
+}
+.lobby-thanks {
+  text-align: center;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--green, #00e436);
+}

@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LIMITS } from '@omni/shared';
 import { navigate } from '../App';
 import { createRoom } from '../lib/api';
 import { savedName, saveName } from '../lib/identity';
 import { FeedbackMenu } from './menus';
-import { anchorOf, Popover, type Anchor } from './Popover';
 
 /** Landing page: pick a name, then create a table or join one by code. */
 export function Lobby() {
@@ -12,7 +11,13 @@ export function Lobby() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState<Anchor | null>(null);
+  const [feedback, setFeedback] = useState(false);
+  const [fbError, setFbError] = useState('');
+  const fbRef = useRef<HTMLDivElement>(null);
+  // Bring the form into view when it opens; it's part of the page, so it can always be scrolled to.
+  useEffect(() => {
+    if (feedback) fbRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [feedback]);
   const [thanks, setThanks] = useState('');
 
   const needName = () => {
@@ -90,33 +95,39 @@ export function Lobby() {
               </button>
             </div>
             {error && <div className="err">{error}</div>}
-            {thanks && <div className="pnote">{thanks}</div>}
           </div>
           <div className="lobby-foot">
             <button
-              className="btn fb"
-              data-keeps-pop
-              onClick={(e) => setFeedback(feedback ? null : anchorOf(e.currentTarget))}
+              className={`btn fb${feedback ? ' on' : ''}`}
+              aria-expanded={feedback}
+              aria-controls="lobby-fb"
+              onClick={() => {
+                setFeedback(!feedback);
+                setFbError('');
+                setThanks('');
+              }}
             >
               FEEDBACK
             </button>
           </div>
+          {/* Inline rather than a popup: on a phone the keyboard would cover a popup's SEND button. */}
+          {feedback && (
+            <div className="panel lobby-fb" id="lobby-fb" ref={fbRef}>
+              <FeedbackMenu
+                onDone={(msg, err) => {
+                  if (err) return setFbError(msg);
+                  setFbError('');
+                  setThanks(msg);
+                  setFeedback(false);
+                }}
+              />
+              {fbError && <div className="err">{fbError}</div>}
+            </div>
+          )}
+          {thanks && !feedback && <div className="pnote lobby-thanks">{thanks}</div>}
         </div>
         <About />
       </div>
-      {feedback && (
-        <Popover anchor={feedback} onClose={() => setFeedback(null)} label="feedback">
-          <FeedbackMenu
-            onDone={(msg, err) => {
-              if (err) setError(msg);
-              else {
-                setThanks(msg);
-                setFeedback(null);
-              }
-            }}
-          />
-        </Popover>
-      )}
     </div>
   );
 }
